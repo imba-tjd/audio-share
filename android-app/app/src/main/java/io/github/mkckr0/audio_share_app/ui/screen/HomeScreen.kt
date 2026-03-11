@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.text.isDigitsOnly
@@ -101,7 +102,7 @@ fun HomeScreen(viewModel: HomeScreenViewModel = viewModel()) {
                         },
                         enabled = !started,
                         isError = isHostError,
-                        label = { Text(context.getString(R.string.label_host)) },
+                        label = { Text(stringResource(R.string.label_host)) },
                         modifier = Modifier.weight(0.7f),
                     )
                     OutlinedTextField(
@@ -113,7 +114,7 @@ fun HomeScreen(viewModel: HomeScreenViewModel = viewModel()) {
                         },
                         enabled = !started,
                         isError = isPortError,
-                        label = { Text(context.getString(R.string.label_port)) },
+                        label = { Text(stringResource(R.string.label_port)) },
                         modifier = Modifier.weight(0.3f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )

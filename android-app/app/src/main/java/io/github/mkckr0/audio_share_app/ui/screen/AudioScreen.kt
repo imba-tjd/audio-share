@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.github.mkckr0.audio_share_app.R
@@ -39,10 +40,10 @@ fun AudioScreen() {
         modifier = Modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        ConfigGroup(context.getString(R.string.label_audio_track)) {
+        ConfigGroup(stringResource(R.string.label_audio_track)) {
             SliderConfig(
                 key = AudioConfigKeys.VOLUME,
-                title = context.getString(R.string.label_volume_linear_gain),
+                title = stringResource(R.string.label_volume_linear_gain),
                 valueFormatter = { "%1.2f".format(it) },
                 defaultValue = context.getFloat(R.string.default_volume),
                 valueRange = AudioTrack.getMinVolume()..AudioTrack.getMaxVolume(),
@@ -50,17 +51,17 @@ fun AudioScreen() {
             )
             SliderConfig(
                 key = AudioConfigKeys.BUFFER_SCALE,
-                title = context.getString(R.string.label_buffer_scale),
+                title = stringResource(R.string.label_buffer_scale),
                 valueFormatter = { "%1.0fx".format(it) },
                 defaultValue = context.getFloat(R.string.default_buffer_scale),
                 valueRange = 1f..10f,
                 step = 1f
             )
         }
-        ConfigGroup(context.getString(R.string.label_audio_effect)) {
+        ConfigGroup(stringResource(R.string.label_audio_effect)) {
             SliderConfig(
                 key = AudioConfigKeys.LOUDNESS_ENHANCER,
-                title = context.getString(R.string.label_loudness_enhancer),
+                title = stringResource(R.string.label_loudness_enhancer),
                 valueFormatter = { "%1.0fmB".format(it) },
                 defaultValue = context.getFloat(R.string.default_loudness_enhancer),
                 valueRange = 0f..3000f,

@@ -16,9 +16,6 @@
 
 package io.github.mkckr0.audio_share_app.ui.screen
 
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -34,7 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -61,11 +58,10 @@ data class TopLevelRoute(val label: String, val icon: ImageVector, val route: Ro
 
 @Composable
 fun MainScreen() {
-    val context = LocalContext.current
     val topLevelRoutes = listOf(
-        TopLevelRoute(context.getString(R.string.label_home), Icons.Default.Home, Route.Home),
-        TopLevelRoute(context.getString(R.string.label_audio), Icons.Default.Audiotrack, Route.Audio),
-        TopLevelRoute(context.getString(R.string.label_settings), Icons.Default.Settings, Route.Settings),
+        TopLevelRoute(stringResource(R.string.label_home), Icons.Default.Home, Route.Home),
+        TopLevelRoute(stringResource(R.string.label_audio), Icons.Default.Audiotrack, Route.Audio),
+        TopLevelRoute(stringResource(R.string.label_settings), Icons.Default.Settings, Route.Settings),
     )
 
     val navController = rememberNavController()
@@ -97,9 +93,7 @@ fun MainScreen() {
         NavHost(
             navController = navController,
             startDestination = Route.Home,
-            modifier = Modifier.padding(innerPadding),
-            enterTransition = { fadeIn(animationSpec = tween(100)) },
-            exitTransition = { fadeOut(animationSpec = tween(100)) },
+            modifier = Modifier.padding(innerPadding)
         ) {
             composable<Route.Home> { HomeScreen() }
             composable<Route.Audio> { AudioScreen() }

@@ -21,11 +21,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -36,7 +33,6 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import io.github.mkckr0.audio_share_app.R
 import io.github.mkckr0.audio_share_app.model.AppSettingsKeys
-import io.github.mkckr0.audio_share_app.model.Asset
 import io.github.mkckr0.audio_share_app.model.Channel
 import io.github.mkckr0.audio_share_app.model.appSettingsDataStore
 import io.github.mkckr0.audio_share_app.model.getBoolean
@@ -49,8 +45,6 @@ import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-
-    private val tag = MainActivity::class.simpleName
 
     private lateinit var _mediaControllerFuture: ListenableFuture<MediaController>
 
