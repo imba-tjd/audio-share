@@ -30,7 +30,7 @@ plugins {
 
 android {
     namespace = "io.github.mkckr0.audio_share_app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "io.github.mkckr0.audio_share_app"
@@ -42,18 +42,18 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    signingConfigs {
-        create("release") {
-            val keystoreProperties = Properties().apply {
-                load(rootProject.file("keystore.properties").inputStream())
-            }
-            storeFile = file(keystoreProperties.getProperty("storeFile"))
-            keyAlias = keystoreProperties.getProperty("keyAlias")
-            storePassword = keystoreProperties.getProperty("storePassword")
-            keyPassword = keystoreProperties.getProperty("keyPassword")
-            enableV3Signing = true
-        }
-    }
+//    signingConfigs {
+//        create("release") {
+//            val keystoreProperties = Properties().apply {
+//                load(rootProject.file("keystore.properties").inputStream())
+//            }
+//            storeFile = file(keystoreProperties.getProperty("storeFile"))
+//            keyAlias = keystoreProperties.getProperty("keyAlias")
+//            storePassword = keystoreProperties.getProperty("storePassword")
+//            keyPassword = keystoreProperties.getProperty("keyPassword")
+//            enableV3Signing = true
+//        }
+//    }
 
     buildTypes {
         release {
@@ -62,12 +62,12 @@ android {
             isDebuggable = false
             isProfileable = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs["release"]
+//            signingConfig = signingConfigs["release"]
         }
     }
 
     kotlin {
-        jvmToolchain(17)
+        jvmToolchain(21)
     }
 
     buildFeatures {
@@ -120,7 +120,7 @@ dependencies {
     testImplementation(platform(libs.androidx.compose.bom))
 
     androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
+//    androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
 

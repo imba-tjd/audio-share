@@ -23,16 +23,12 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
-import android.util.Log
 import android.widget.Toast
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -51,15 +47,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
 import io.github.mkckr0.audio_share_app.BuildConfig
 import io.github.mkckr0.audio_share_app.R
 import io.github.mkckr0.audio_share_app.model.AppSettingsKeys
-import io.github.mkckr0.audio_share_app.model.WorkName
 import io.github.mkckr0.audio_share_app.model.getBoolean
 import io.github.mkckr0.audio_share_app.ui.base.EditTextPreference
 import io.github.mkckr0.audio_share_app.ui.base.Preference
@@ -70,8 +60,6 @@ import io.github.mkckr0.audio_share_app.ui.base.rememberIntent
 import io.github.mkckr0.audio_share_app.ui.theme.AppTheme
 import io.github.mkckr0.audio_share_app.ui.theme.isDynamicColorFromWallpaperAvailable
 import io.github.mkckr0.audio_share_app.ui.theme.parseColor
-import io.github.mkckr0.audio_share_app.worker.UpdateWorker
-import java.util.concurrent.TimeUnit
 
 @SuppressLint("BatteryLife")
 @Composable
@@ -80,20 +68,20 @@ fun SettingsScreen() {
     val tag = "SettingsScreen"
 
     val context = LocalContext.current
-
+    
     PreferenceScreen {
 
-        PreferenceCategory(context.getString(R.string.label_auto_start)) {
+        PreferenceCategory(stringResource(R.string.label_auto_start)) {
             SwitchPreference(
                 icon = Icons.Default.PowerSettingsNew,
                 key = AppSettingsKeys.START_PLAYBACK_WHEN_SYSTEM_BOOT,
-                title = context.getString(R.string.label_auto_start_when_system_boots),
+                title = stringResource(R.string.label_auto_start_when_system_boots),
                 defaultValue = context.getBoolean(R.bool.default_start_playback_when_system_boot)
             )
             SwitchPreference(
                 icon = Icons.Default.PlayCircle,
                 key = AppSettingsKeys.START_PLAYBACK_WHEN_APP_START,
-                title = context.getString(R.string.label_auto_start_when_app_starts),
+                title = stringResource(R.string.label_auto_start_when_app_starts),
                 defaultValue = context.getBoolean(R.bool.default_start_playback_when_app_start)
             )
         }
@@ -113,10 +101,10 @@ fun SettingsScreen() {
             batteryOptimizationState = getBatteryOptimizationState()
         }
 
-        PreferenceCategory(context.getString(R.string.label_battery_optimization)) {
+        PreferenceCategory(stringResource(R.string.label_battery_optimization)) {
             Preference(
                 icon = Icons.Default.BatterySaver,
-                title = context.getString(R.string.label_request_battery_optimization),
+                title = stringResource(R.string.label_request_battery_optimization),
                 summary = batteryOptimizationState,
                 intent = rememberIntent(
                     Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
@@ -125,18 +113,18 @@ fun SettingsScreen() {
             )
             Preference(
                 icon = Icons.Default.Settings,
-                title = context.getString(R.string.label_battery_optimization_settings),
+                title = stringResource(R.string.label_battery_optimization_settings),
                 intent = rememberIntent(
                     Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS
                 )
             )
         }
 
-        PreferenceCategory(context.getString(R.string.label_appearance)) {
+        PreferenceCategory(stringResource(R.string.label_appearance)) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 Preference(
                     icon = Icons.Default.Translate,
-                    title = context.getString(R.string.label_language),
+                    title = stringResource(R.string.label_language),
                     intent = rememberIntent(
                         Settings.ACTION_APP_LOCALE_SETTINGS,
                         "package:${BuildConfig.APPLICATION_ID}"
@@ -147,15 +135,15 @@ fun SettingsScreen() {
                 SwitchPreference(
                     icon = Icons.Default.Wallpaper,
                     key = AppSettingsKeys.DYNAMIC_COLOR_FROM_WALLPAPER,
-                    title = context.getString(R.string.label_dynamic_color_from_wallpaper),
+                    title = stringResource(R.string.label_dynamic_color_from_wallpaper),
                     defaultValue = context.getBoolean(R.bool.default_dynamic_color_from_wallpaper),
                 )
             }
             EditTextPreference(
                 icon = Icons.Default.ColorLens,
                 key = AppSettingsKeys.DYNAMIC_COLOR_FROM_SEED_COLOR,
-                title = context.getString(R.string.label_dynamic_color_from_seed_color),
-                defaultValue = context.getString(R.string.default_dynamic_color_from_seed_color),
+                title = stringResource(R.string.label_dynamic_color_from_seed_color),
+                defaultValue = stringResource(R.string.default_dynamic_color_from_seed_color),
             ) { newValue ->
                 if (newValue.isBlank()) {
                     Toast.makeText(context, context.getString(R.string.label_color_is_invalid), Toast.LENGTH_SHORT).show()
@@ -172,10 +160,10 @@ fun SettingsScreen() {
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            PreferenceCategory(context.getString(R.string.label_notification)) {
+            PreferenceCategory(stringResource(R.string.label_notification)) {
                 Preference(
                     icon = Icons.Default.Notifications,
-                    title = context.getString(R.string.label_notification_settings),
+                    title = stringResource(R.string.label_notification_settings),
                     intent = rememberIntent(
                         Settings.ACTION_APP_NOTIFICATION_SETTINGS,
                         extras = Bundle().apply {
@@ -186,55 +174,7 @@ fun SettingsScreen() {
             }
         }
 
-        PreferenceCategory(context.getString(R.string.label_update)) {
-            val workManager = remember { WorkManager.getInstance(context.applicationContext) }
-            SwitchPreference(
-                icon = Icons.Default.Autorenew,
-                key = AppSettingsKeys.AUTO_CHECK_FOR_UPDATE,
-                title = context.getString(R.string.label_auto_check_for_update),
-                defaultValue = context.getBoolean(R.bool.default_auto_check_for_update),
-            ) { checked ->
-                if (checked) {
-                    Log.d(tag, "UpdateWorker beginAutoUpdate")
-                    val updateWorker =
-                        PeriodicWorkRequestBuilder<UpdateWorker>(
-                            3, TimeUnit.HOURS,
-                            5, TimeUnit.MINUTES,
-//                            PeriodicWorkRequest.MIN_PERIODIC_INTERVAL_MILLIS, TimeUnit.MILLISECONDS,
-//                            PeriodicWorkRequest.MIN_PERIODIC_FLEX_MILLIS, TimeUnit.MILLISECONDS,
-                        ).build()
-                    workManager.enqueueUniquePeriodicWork(
-                        WorkName.AUTO_CHECK_UPDATE.value,
-                        ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE,
-                        updateWorker
-                    )
-                } else {
-                    Log.d(tag, "UpdateWorker stopAutoUpdate")
-                    workManager.cancelUniqueWork(WorkName.AUTO_CHECK_UPDATE.value)
-                }
-            }
-            Preference(
-                icon = Icons.Default.Update,
-                title = context.getString(R.string.label_check_for_update),
-            ) {
-                val work = OneTimeWorkRequestBuilder<UpdateWorker>().build()
-                workManager.enqueueUniqueWork(
-                    WorkName.CHECK_UPDATE.value,
-                    ExistingWorkPolicy.REPLACE,
-                    work
-                )
-            }
-            Preference(
-                icon = Icons.Default.NewReleases,
-                title = context.getString(R.string.label_latest_release),
-                intent = rememberIntent(
-                    Intent.ACTION_VIEW,
-                    stringResource(R.string.latest_release_url)
-                )
-            )
-        }
-
-        PreferenceCategory(context.getString(R.string.label_about)) {
+        PreferenceCategory(stringResource(R.string.label_about)) {
             Preference(
                 icon = R.drawable.github_mark,
                 title = "Audio Share",
@@ -246,8 +186,8 @@ fun SettingsScreen() {
             )
             Preference(
                 icon = Icons.Default.BugReport,
-                title = context.getString(R.string.label_issues),
-                summary = context.getString(R.string.label_report_a_bug),
+                title = stringResource(R.string.label_issues),
+                summary = stringResource(R.string.label_report_a_bug),
                 intent = rememberIntent(
                     Intent.ACTION_VIEW,
                     stringResource(R.string.issues_url)
@@ -255,7 +195,7 @@ fun SettingsScreen() {
             )
             Preference(
                 icon = Icons.Default.Info,
-                title = context.getString(R.string.label_version),
+                title = stringResource(R.string.label_version),
                 summary = remember { "${BuildConfig.VERSION_NAME}(${BuildConfig.VERSION_CODE})-${BuildConfig.BUILD_TYPE}" },
                 intent = rememberIntent(
                     Intent.ACTION_VIEW,

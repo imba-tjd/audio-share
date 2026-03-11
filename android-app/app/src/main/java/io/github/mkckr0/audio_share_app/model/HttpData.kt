@@ -24,7 +24,6 @@ import kotlinx.serialization.Serializable
 @Parcelize
 data class Asset(
     val name: String,
-    val browserDownloadUrl: String,
     val size: Long,
     val contentType: String,
 ) : Parcelable
