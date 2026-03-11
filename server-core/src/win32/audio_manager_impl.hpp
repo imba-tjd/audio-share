@@ -17,8 +17,6 @@
 #ifndef AUDIO_MANAGER_HPP
 #define AUDIO_MANAGER_HPP
 
-#ifdef _WINDOWS
-
 #include <string>
 
 class network_manager;
@@ -39,5 +37,4 @@ std::wstring mbs_to_wchars(const std::string& src);
 std::string str_win_err(int err);
 std::wstring wstr_win_err(int err);
 
-#endif // _WINDOWS
 #endif // !AUDIO_MANAGER_HPP

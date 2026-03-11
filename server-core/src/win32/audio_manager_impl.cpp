@@ -14,7 +14,6 @@
    limitations under the License.
 */
 
-#ifdef _WINDOWS
 
 #include "audio_manager.hpp"
 #include "client.pb.h"
@@ -148,7 +147,7 @@ void audio_manager::do_loopback_recording(std::shared_ptr<network_manager> netwo
     } else {
         pCaptureFormat = wil::make_unique_cotaskmem<WAVEFORMATEX>(*pMixFormat);
     }
-    
+
     if (config.encoding == encoding_t::encoding_invalid) {
         spdlog::error("invalid encoding");
         return;
@@ -552,5 +551,3 @@ std::wstring wstr_win_err(int err)
     }
     return msg;
 }
-
-#endif // _WINDOWS

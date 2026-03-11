@@ -17,13 +17,7 @@
 #ifndef BASIC_AUDIO_MANAGER_HPP
 #define BASIC_AUDIO_MANAGER_HPP
 
-#ifdef linux
-#include "linux/audio_manager_impl.hpp"
-#endif
-
-#ifdef _WINDOWS
 #include "win32/audio_manager_impl.hpp"
-#endif
 
 #include <memory>
 #include <sstream>
@@ -88,7 +82,7 @@ public:
     endpoint_list_t get_endpoint_list();
 
     std::string get_default_endpoint();
-    
+
 private:
     std::thread _record_thread;
     std::atomic_bool _stopped;
