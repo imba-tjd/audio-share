@@ -14,7 +14,7 @@
  *    limitations under the License.
  */
 
-package io.github.mkckr0.audio_share_app.service
+package io.github.imba_tjd.audio_share_app.service
 
 import android.app.PendingIntent
 import android.content.ComponentName
@@ -40,7 +40,7 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
-import io.github.mkckr0.audio_share_app.ui.MainActivity
+import io.github.imba_tjd.audio_share_app.MainActivity
 
 class PlaybackService : MediaSessionService() {
 

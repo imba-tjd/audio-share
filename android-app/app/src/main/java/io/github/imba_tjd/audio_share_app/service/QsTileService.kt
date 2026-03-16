@@ -14,7 +14,7 @@
  *    limitations under the License.
  */
 
-package io.github.mkckr0.audio_share_app.service
+package io.github.imba_tjd.audio_share_app.service
 
 import android.app.PendingIntent
 import android.content.ComponentName
@@ -33,9 +33,9 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionToken
-import io.github.mkckr0.audio_share_app.model.canStartForegroundService
-import io.github.mkckr0.audio_share_app.service.PlaybackService.Companion.ACTION_STOP_SERVICE
-import io.github.mkckr0.audio_share_app.ui.MainActivity
+import io.github.imba_tjd.audio_share_app.model.canStartForegroundService
+import io.github.imba_tjd.audio_share_app.service.PlaybackService.Companion.ACTION_STOP_SERVICE
+import io.github.imba_tjd.audio_share_app.MainActivity
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.guava.await

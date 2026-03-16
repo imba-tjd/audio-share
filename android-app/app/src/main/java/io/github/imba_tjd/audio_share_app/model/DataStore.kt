@@ -14,24 +14,15 @@
  *    limitations under the License.
  */
 
-package io.github.mkckr0.audio_share_app.service
+package io.github.imba_tjd.audio_share_app.model
 
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.util.Log
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.preferencesDataStore
 
-class BootReceiver : BroadcastReceiver() {
+val Context.networkConfigDataStore: DataStore<Preferences> by preferencesDataStore(name = "network_config")
 
-    private val tag = BootReceiver::class.simpleName
+val Context.audioConfigDataStore: DataStore<Preferences> by preferencesDataStore(name = "audio_config")
 
-    override fun onReceive(context: Context, intent: Intent) {
-        Log.d(tag, "onReceive $intent")
-        when(intent.action) {
-            Intent.ACTION_BOOT_COMPLETED -> {
-                // https://developer.android.com/about/versions/15/behavior-changes-15#fgs-boot-completed
-                context.startService(Intent(context, BootService::class.java))
-            }
-        }
-    }
-}
+val Context.appSettingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "app_settings")

@@ -14,7 +14,7 @@
  *    limitations under the License.
  */
 
-package io.github.mkckr0.audio_share_app.service
+package io.github.imba_tjd.audio_share_app.service
 
 import android.app.Service
 import android.content.ComponentName
@@ -25,10 +25,10 @@ import androidx.core.os.bundleOf
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import io.github.mkckr0.audio_share_app.R
-import io.github.mkckr0.audio_share_app.model.AppSettingsKeys
-import io.github.mkckr0.audio_share_app.model.appSettingsDataStore
-import io.github.mkckr0.audio_share_app.model.getBoolean
+import io.github.imba_tjd.audio_share_app.R
+import io.github.imba_tjd.audio_share_app.model.AppSettingsKeys
+import io.github.imba_tjd.audio_share_app.model.appSettingsDataStore
+import io.github.imba_tjd.audio_share_app.model.getBoolean
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first

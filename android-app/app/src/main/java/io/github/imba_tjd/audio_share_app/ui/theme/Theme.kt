@@ -14,7 +14,7 @@
  *    limitations under the License.
  */
 
-package io.github.mkckr0.audio_share_app.ui.theme
+package io.github.imba_tjd.audio_share_app.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -22,7 +22,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -30,7 +29,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.materialkolor.dynamicColorScheme
 
-import io.github.mkckr0.audio_share_app.ui.theme.AppThemeViewModel.UiState
+import io.github.imba_tjd.audio_share_app.ui.theme.AppThemeViewModel.UiState
 
 fun Color.Companion.parseColor(colorString: String): Color {
     return Color(android.graphics.Color.parseColor(colorString))
