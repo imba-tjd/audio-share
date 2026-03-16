@@ -16,28 +16,24 @@
 
 @file:Suppress("UnstableApiUsage")
 
-import java.util.Properties
-import com.google.protobuf.gradle.proto
-
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.plugin.serialization)
     alias(libs.plugins.kotlin.plugin.parcelize)
-    alias(libs.plugins.protobuf)
+//    alias(libs.plugins.protobuf)
 }
 
 android {
-    namespace = "io.github.mkckr0.audio_share_app"
+    namespace = "io.github.imba_tjd.audio_share_app"
     compileSdk = 36
 
     defaultConfig {
         applicationId = "io.github.mkckr0.audio_share_app"
         minSdk = 23
         targetSdk = 35
-        versionCode = 3004
-        versionName = "0.3.4"
+        versionCode = 1
+        versionName = "0.1"
         base.archivesName = "${rootProject.name}-$versionName"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -75,13 +71,13 @@ android {
         buildConfig = true
     }
 
-    sourceSets {
-        getByName("main") {
-            proto {
-                srcDir("../../protos")
-            }
-        }
-    }
+//    sourceSets {
+//        getByName("main") {
+//            proto {
+//                srcDir("../../protos")
+//            }
+//        }
+//    }
 
     dependenciesInfo {
         includeInApk = false
@@ -128,17 +124,17 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 }
 
-protobuf {
-    protoc {
-        artifact = "com.google.protobuf:protoc:${libs.versions.protobuf.get()}"
-    }
-    generateProtoTasks {
-        all().forEach { task ->
-            task.builtins {
-                create("java")  {
-                    option("lite")
-                }
-            }
-        }
-    }
-}
+//protobuf {
+//    protoc {
+//        artifact = "com.google.protobuf:protoc:${libs.versions.protobuf.get()}"
+//    }
+//    generateProtoTasks {
+//        all().forEach { task ->
+//            task.builtins {
+//                create("java")  {
+//                    option("lite")
+//                }
+//            }
+//        }
+//    }
+//}
