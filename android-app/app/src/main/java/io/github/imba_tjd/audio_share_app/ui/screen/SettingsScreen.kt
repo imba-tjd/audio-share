@@ -56,7 +56,7 @@ import io.github.imba_tjd.audio_share_app.ui.base.PreferenceCategory
 import io.github.imba_tjd.audio_share_app.ui.base.PreferenceScreen
 import io.github.imba_tjd.audio_share_app.ui.base.SwitchPreference
 import io.github.imba_tjd.audio_share_app.ui.base.rememberIntent
-import io.github.imba_tjd.audio_share_app.ui.theme.AppTheme
+import io.github.imba_tjd.audio_share_app.ui.theme.AppThemeInternal
 import io.github.imba_tjd.audio_share_app.ui.theme.isDynamicColorFromWallpaperAvailable
 import io.github.imba_tjd.audio_share_app.ui.theme.parseColor
 
@@ -64,19 +64,11 @@ import io.github.imba_tjd.audio_share_app.ui.theme.parseColor
 @Composable
 fun SettingsScreen() {
 
-    val tag = "SettingsScreen"
-
     val context = LocalContext.current
     
     PreferenceScreen {
 
         PreferenceCategory(stringResource(R.string.label_auto_start)) {
-            SwitchPreference(
-                icon = Icons.Default.PowerSettingsNew,
-                key = AppSettingsKeys.START_PLAYBACK_WHEN_SYSTEM_BOOT,
-                title = stringResource(R.string.label_auto_start_when_system_boots),
-                defaultValue = context.getBoolean(R.bool.default_start_playback_when_system_boot)
-            )
             SwitchPreference(
                 icon = Icons.Default.PlayCircle,
                 key = AppSettingsKeys.START_PLAYBACK_WHEN_APP_START,
@@ -87,11 +79,7 @@ fun SettingsScreen() {
 
         val getBatteryOptimizationState = {
             val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-            if (powerManager.isIgnoringBatteryOptimizations(BuildConfig.APPLICATION_ID)) {
-                context.getString(R.string.label_ignored)
-            } else {
-                context.getString(R.string.label_not_ignored)
-            }
+            powerManager.isIgnoringBatteryOptimizations(BuildConfig.APPLICATION_ID)
         }
         var batteryOptimizationState by remember {
             mutableStateOf(getBatteryOptimizationState())
@@ -104,7 +92,7 @@ fun SettingsScreen() {
             Preference(
                 icon = Icons.Default.BatterySaver,
                 title = stringResource(R.string.label_request_battery_optimization),
-                summary = batteryOptimizationState,
+                summary = if (batteryOptimizationState) stringResource(R.string.label_ignored) else stringResource(R.string.label_not_ignored),
                 intent = rememberIntent(
                     Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                     "package:${BuildConfig.APPLICATION_ID}"
@@ -208,7 +196,7 @@ fun SettingsScreen() {
 @Preview
 @Composable
 fun SettingsScreenPreview() {
-    AppTheme {
+    AppThemeInternal {
         SettingsScreen()
     }
 }

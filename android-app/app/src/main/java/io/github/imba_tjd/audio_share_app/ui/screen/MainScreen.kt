@@ -43,15 +43,15 @@ import androidx.navigation.compose.rememberNavController
 import io.github.imba_tjd.audio_share_app.R
 import kotlinx.serialization.Serializable
 
-sealed class Route {
+sealed interface Route {
     @Serializable
-    data object Home : Route()
+    data object Home : Route
 
     @Serializable
-    data object Audio : Route()
+    data object Audio : Route
 
     @Serializable
-    data object Settings : Route()
+    data object Settings : Route
 }
 
 data class TopLevelRoute(val label: String, val icon: ImageVector, val route: Route)

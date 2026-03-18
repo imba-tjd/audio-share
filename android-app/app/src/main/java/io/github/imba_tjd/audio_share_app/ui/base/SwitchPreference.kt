@@ -34,14 +34,14 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 @Composable
-private fun <IconSrc> BaseSwitchPreference(
-    iconSrc: IconSrc,
+fun SwitchPreference(
+    icon: ImageVector?,
     key: String,
     title: String,
     defaultValue: Boolean,
-    summaryOn: String,
-    summaryOff: String,
-    onChange: ((checked: Boolean) -> Unit)?
+    summaryOn: String = "",
+    summaryOff: String = "",
+    onChange: ((checked: Boolean) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -54,7 +54,7 @@ private fun <IconSrc> BaseSwitchPreference(
     }.collectAsState(null).value  // null states loading
 
     ListItem(
-        leadingContent = { PreferenceIcon(iconSrc) },
+        leadingContent = { PreferenceIcon(icon) },
         headlineContent = { Text(title) },
         supportingContent = if (checked != null && (summaryOn.isNotEmpty() || summaryOff.isNotEmpty())) {
             { Text(if (checked) summaryOn else summaryOff) }
@@ -80,30 +80,4 @@ private fun <IconSrc> BaseSwitchPreference(
             }
         }
     )
-}
-
-@Composable
-fun SwitchPreference(
-    icon: ImageVector? = null,
-    key: String,
-    title: String,
-    defaultValue: Boolean = false,
-    summaryOn: String = "",
-    summaryOff: String = "",
-    onChange: ((checked: Boolean) -> Unit)? = null,
-) {
-    BaseSwitchPreference(icon, key, title, defaultValue, summaryOn, summaryOff, onChange)
-}
-
-@Composable
-fun SwitchPreference(
-    icon: Int? = null,
-    key: String,
-    title: String,
-    defaultValue: Boolean = false,
-    summaryOn: String = "",
-    summaryOff: String = "",
-    onChange: ((checked: Boolean) -> Unit)? = null,
-) {
-    BaseSwitchPreference(icon, key, title, defaultValue, summaryOn, summaryOff, onChange)
 }

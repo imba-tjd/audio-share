@@ -32,6 +32,8 @@ import io.github.imba_tjd.audio_share_app.model.getFloat
 import io.github.imba_tjd.audio_share_app.ui.base.ConfigGroup
 import io.github.imba_tjd.audio_share_app.ui.base.SliderConfig
 import io.github.imba_tjd.audio_share_app.ui.theme.AppTheme
+import io.github.imba_tjd.audio_share_app.ui.theme.AppThemeInternal
+import io.github.imba_tjd.audio_share_app.ui.theme.AppThemeViewModel
 
 @Composable
 fun AudioScreen() {
@@ -74,7 +76,7 @@ fun AudioScreen() {
 @Preview
 @Composable
 fun AudioScreenPreview() {
-    AppTheme {
+    AppThemeInternal {
         AudioScreen()
     }
 }

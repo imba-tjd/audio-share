@@ -38,7 +38,7 @@ import io.github.imba_tjd.audio_share_app.service.PlaybackService.Companion.ACTI
 import io.github.imba_tjd.audio_share_app.MainActivity
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.guava.await
+import androidx.concurrent.futures.await
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.seconds
 

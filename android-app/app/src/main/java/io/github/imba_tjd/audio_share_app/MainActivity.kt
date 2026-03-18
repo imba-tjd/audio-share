@@ -9,6 +9,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.concurrent.futures.await
 import androidx.core.os.bundleOf
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.media3.session.MediaController
@@ -23,7 +24,6 @@ import io.github.imba_tjd.audio_share_app.ui.screen.MainScreen
 import io.github.imba_tjd.audio_share_app.ui.theme.AppTheme
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {

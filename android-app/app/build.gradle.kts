@@ -62,10 +62,6 @@ android {
         }
     }
 
-    kotlin {
-        jvmToolchain(21)
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
@@ -89,39 +85,43 @@ android {
     }
 }
 
+kotlin {
+    jvmToolchain(21)
+}
+
 dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.ui)
-    implementation(libs.androidx.ui.graphics)
+//    implementation(libs.androidx.ui)
+//    implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation(libs.androidx.work.runtime.ktx)
+//    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.ktor.client.android)
-    implementation(libs.ktor.client.content.negotiation)
-    implementation(libs.ktor.serialization.kotlinx.json)
+//    implementation(libs.ktor.client.android)
+//    implementation(libs.ktor.client.content.negotiation)
+//    implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.ktor.network)
     implementation(libs.google.protobuf.kotlin.lite)
     implementation(libs.material.kolor)
-    implementation(libs.kotlinx.coroutines.guava)
+//    implementation(libs.kotlinx.coroutines.guava)
+    implementation("androidx.concurrent:concurrent-futures-ktx:+")
 
-    testImplementation(libs.junit)
-    testImplementation(platform(libs.androidx.compose.bom))
-
-    androidTestImplementation(libs.androidx.junit)
+//    testImplementation(libs.junit)
+//    testImplementation(platform(libs.androidx.compose.bom))
+//    androidTestImplementation(libs.androidx.junit)
 //    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.ui.test.junit4)
+//    androidTestImplementation(platform(libs.androidx.compose.bom))
+//    androidTestImplementation(libs.androidx.ui.test.junit4)
 
     debugImplementation(libs.androidx.ui.tooling)
-    debugImplementation(libs.androidx.ui.test.manifest)
+//    debugImplementation(libs.androidx.ui.test.manifest)
 }
 
 //protobuf {

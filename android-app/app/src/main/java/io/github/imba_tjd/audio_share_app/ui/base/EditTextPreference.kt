@@ -124,14 +124,3 @@ fun EditTextPreference(
 ) {
     BaseEditTextPreference(icon, key, title, defaultValue, onSubmit)
 }
-
-@Composable
-fun EditTextPreference(
-    icon: Int,
-    key: String,
-    title: String,
-    defaultValue: String = "",
-    onSubmit: (newValue: String) -> Boolean = EditTextPreferenceDefaults.onSubmit,
-) {
-    BaseEditTextPreference(icon, key, title, defaultValue, onSubmit)
-}

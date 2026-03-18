@@ -19,8 +19,10 @@ package io.github.imba_tjd.audio_share_app.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
@@ -41,38 +43,39 @@ fun isDynamicColorFromWallpaperAvailable(): Boolean {
 
 @Composable
 fun AppTheme(
-    viewModel: AppThemeViewModel = viewModel(),
+    viewModel: AppThemeViewModel = viewModel(), // 仅在正式运行时使用
+    content: @Composable () -> Unit
+) {
+    val uiState = viewModel.uiState.collectAsStateWithLifecycle()
+
+    AppThemeInternal(
+        uiState = uiState.value,
+        content = content
+    )
+}
+
+@Composable
+fun AppThemeInternal(
+    uiState: UiState = UiState.Success(false, "#63A002"),
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
     val isDarkTheme = isSystemInDarkTheme()
 
-    when (val uiState = viewModel.uiState.collectAsStateWithLifecycle().value) {
-        UiState.Loading -> {}
+    val colorScheme = when (uiState) {
+        UiState.Loading -> {
+            if (isDarkTheme) darkColorScheme() else lightColorScheme()
+        }
         is UiState.Success -> {
-            val colorScheme = remember(
-                isDarkTheme,
-                uiState.dynamicColorFromWallpaper,
-                uiState.dynamicColorFromSeedColor,
-            ) {
+            remember(isDarkTheme, uiState) {
                 if (uiState.dynamicColorFromWallpaper && isDynamicColorFromWallpaperAvailable()) {
-                    if (isDarkTheme) {
-                        dynamicDarkColorScheme(context)
-                    } else {
-                        dynamicLightColorScheme(context)
-                    }
+                    if (isDarkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
                 } else {
-                    dynamicColorScheme(
-                        Color.parseColor(uiState.dynamicColorFromSeedColor),
-                        isDarkTheme,
-                        false
-                    )
+                    dynamicColorScheme(Color.parseColor(uiState.dynamicColorFromSeedColor), isDarkTheme)
                 }
             }
-            MaterialTheme(
-                colorScheme = colorScheme,
-                content = content
-            )
         }
     }
+
+    MaterialTheme(colorScheme = colorScheme, content = content)
 }

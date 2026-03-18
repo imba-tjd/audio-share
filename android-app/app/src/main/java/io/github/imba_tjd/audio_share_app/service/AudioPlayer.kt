@@ -54,11 +54,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import java.nio.ByteBuffer
 import kotlin.time.Duration.Companion.seconds
+import androidx.concurrent.futures.CallbackToFutureAdapter
+import androidx.core.app.ActivityCompat
+import androidx.core.content.PermissionChecker
 
 @OptIn(UnstableApi::class)
 class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
@@ -97,51 +99,62 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
     }
 
     override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
-        return future {
-            Log.d(tag, "handleSetPlayWhenReady playWhenReady=$playWhenReady")
-            _state = state.buildUpon().setPlayerError(null).build()
-            if (playWhenReady) {
-                val networkConfig = context.networkConfigDataStore.data.first()
-                val host = networkConfig[stringPreferencesKey(NetworkConfigKeys.HOST)]
-                    ?: context.getString(R.string.default_host)
-                val port = networkConfig[intPreferencesKey(NetworkConfigKeys.PORT)]
-                    ?: context.getInteger(R.integer.default_port)
+        return CallbackToFutureAdapter.getFuture { completer ->
+            suspend fun play() {
+                Log.d(tag, "handleSetPlayWhenReady playWhenReady=$playWhenReady")
+                _state = state.buildUpon().setPlayerError(null).build()
+                if (playWhenReady) {
+                    val networkConfig = context.networkConfigDataStore.data.first()
+                    val host = networkConfig[stringPreferencesKey(NetworkConfigKeys.HOST)]
+                        ?: context.getString(R.string.default_host)
+                    val port = networkConfig[intPreferencesKey(NetworkConfigKeys.PORT)]
+                        ?: context.getInteger(R.integer.default_port)
 
-                val mediaItem = MediaItem.fromUri("tcp://$host:$port").buildUpon()
-                    .setMediaMetadata(
-                        MediaMetadata.Builder()
-                            .setTitle("Audio Share")
-                            .setArtist("$host:$port")
-                            .setArtworkUri(context.getResourceUri(R.drawable.artwork))
-                            .build()
-                    )
-                    .build()
-
-                _state = state.buildUpon()
-                    .setPlaylist(
-                        listOf(
-                            MediaItemData.Builder("media-1")
-                                .setMediaItem(mediaItem)
+                    val mediaItem = MediaItem.fromUri("tcp://$host:$port").buildUpon()
+                        .setMediaMetadata(
+                            MediaMetadata.Builder()
+                                .setTitle("Audio Share")
+                                .setArtist("$host:$port")
+                                .setArtworkUri(context.getResourceUri(R.drawable.artwork))
                                 .build()
                         )
-                    )
-                    .setCurrentMediaItemIndex(0)
-                    .setPlaybackState(Player.STATE_BUFFERING)
-                    .setPlayWhenReady(true, PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
-                    .build()
+                        .build()
 
-                netClient.start(
-                    host = host,
-                    port = port,
-                    callback = NetClientCallBack()
-                )
-            } else {
-                _state = state.buildUpon()
-                    .setPlayWhenReady(false, PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
-                    .build()
-                netClient.stop()
-                retryScope.coroutineContext.cancelChildren()
-                message = context.getString(R.string.label_paused)
+                    _state = state.buildUpon()
+                        .setPlaylist(
+                            listOf(
+                                MediaItemData.Builder("media-1")
+                                    .setMediaItem(mediaItem)
+                                    .build()
+                            )
+                        )
+                        .setCurrentMediaItemIndex(0)
+                        .setPlaybackState(STATE_BUFFERING)
+                        .setPlayWhenReady(true, PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+                        .build()
+
+                    netClient.start(
+                        host = host,
+                        port = port,
+                        callback = NetClientCallBack()
+                    )
+                } else {
+                    _state = state.buildUpon()
+                        .setPlayWhenReady(false, PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+                        .build()
+                    netClient.stop()
+                    retryScope.coroutineContext.cancelChildren()
+                    message = context.getString(R.string.label_paused)
+                }
+                completer.set(Unit)
+            }
+
+            MainScope().launch {
+                try {
+                    play()
+                } catch (e: Exception) {
+                    Log.e(tag, e.stackTraceToString())
+                }
             }
         }
     }
@@ -285,19 +298,6 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
                     port = port,
                     callback = NetClientCallBack()
                 )
-            }
-        }
-    }
-
-    /**
-     * All exceptions in ListenableFuture will be suppressed, need log it
-     */
-    private fun future(block: suspend CoroutineScope.() -> Unit): ListenableFuture<*> {
-        return scope.future {
-            try {
-                block()
-            } catch (e: Exception) {
-                Log.e(tag, e.stackTraceToString())
             }
         }
     }

@@ -23,7 +23,3 @@ enum class Channel(val id: String, val title: String, val importance: Int) {
     @SuppressLint("InlinedApi")
     UPDATE("CHANNEL_ID_UPDATE", "Update", NotificationManager.IMPORTANCE_DEFAULT),
 }
-
-enum class Notification(val id: Int) {
-    UPDATE(1)
-}
