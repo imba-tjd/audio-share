@@ -55,8 +55,6 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            isDebuggable = false
-            isProfileable = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
 //            signingConfig = signingConfigs["release"]
         }
@@ -93,6 +91,7 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.compose)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
 //    implementation(libs.androidx.ui)
@@ -100,7 +99,7 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
 //    implementation(libs.androidx.work.runtime.ktx)
-    implementation(libs.androidx.navigation.compose)
+//    implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.datastore.preferences)
@@ -108,7 +107,7 @@ dependencies {
 //    implementation(libs.ktor.client.content.negotiation)
 //    implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.ktor.network)
-    implementation(libs.google.protobuf.kotlin.lite)
+//    implementation(libs.google.protobuf.kotlin.lite)
     implementation(libs.material.kolor)
 //    implementation(libs.kotlinx.coroutines.guava)
     implementation("androidx.concurrent:concurrent-futures-ktx:+")

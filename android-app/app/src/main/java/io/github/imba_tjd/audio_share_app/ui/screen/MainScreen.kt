@@ -16,6 +16,8 @@
 
 package io.github.imba_tjd.audio_share_app.ui.screen
 
+import androidx.annotation.StringRes
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -28,76 +30,48 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.navigation.NavDestination.Companion.hasRoute
-import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
 import io.github.imba_tjd.audio_share_app.R
-import kotlinx.serialization.Serializable
+import androidx.activity.viewModels
 
-sealed interface Route {
-    @Serializable
-    data object Home : Route
+sealed class Route(@field:StringRes val labelId: Int, val icon: ImageVector) {
+    data object Home : Route(R.string.label_home, Icons.Default.Home)
 
-    @Serializable
-    data object Audio : Route
+    data object Audio : Route(R.string.label_audio, Icons.Default.Audiotrack)
 
-    @Serializable
-    data object Settings : Route
+    data object Settings : Route(R.string.label_settings, Icons.Default.Settings)
 }
-
-data class TopLevelRoute(val label: String, val icon: ImageVector, val route: Route)
 
 @Composable
 fun MainScreen() {
-    val topLevelRoutes = listOf(
-        TopLevelRoute(stringResource(R.string.label_home), Icons.Default.Home, Route.Home),
-        TopLevelRoute(stringResource(R.string.label_audio), Icons.Default.Audiotrack, Route.Audio),
-        TopLevelRoute(stringResource(R.string.label_settings), Icons.Default.Settings, Route.Settings),
-    )
+    val routes = listOf(Route.Home, Route.Audio, Route.Settings)
+    var selectdTab: Route = Route.Home
 
-    val navController = rememberNavController()
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
             NavigationBar {
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentDestination = navBackStackEntry?.destination
-                topLevelRoutes.forEach { topLevelRoute ->
+                routes.forEach { rt ->
                     NavigationBarItem(
-                        selected = currentDestination?.hierarchy?.any { it.hasRoute(topLevelRoute.route::class) } == true,
-                        onClick = {
-                            navController.navigate(topLevelRoute.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(topLevelRoute.icon, null) },
-                        label = { Text(topLevelRoute.label) }
+                        selected = selectdTab == rt,
+                        onClick = { selectdTab = rt },
+                        icon = { Icon(rt.icon, null) },
+                        label = { Text(stringResource(rt.labelId)) }
                     )
                 }
             }
         },
     ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Route.Home,
-            modifier = Modifier.padding(innerPadding)
-        ) {
-            composable<Route.Home> { HomeScreen() }
-            composable<Route.Audio> { AudioScreen() }
-            composable<Route.Settings> { SettingsScreen() }
+        Crossfade(selectdTab, modifier = Modifier.padding(innerPadding)) { rt ->
+            when(rt) {
+                is Route.Home -> HomeScreen()
+                is Route.Audio -> AudioScreen()
+                is Route.Settings -> SettingsScreen()
+            }
         }
     }
 }
