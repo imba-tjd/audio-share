@@ -40,19 +40,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // create notification channel
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val notificationManager =
-                getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            val channel = NotificationChannel(
-                Channel.UPDATE.id,
-                Channel.UPDATE.title,
-                Channel.UPDATE.importance
-            )
-            notificationManager.createNotificationChannel(channel)
-        }
-
-        // request permissions
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 0)
         }

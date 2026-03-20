@@ -49,7 +49,7 @@ fun AudioScreen() {
                 valueFormatter = { "%1.2f".format(it) },
                 defaultValue = context.getFloat(R.string.default_volume),
                 valueRange = AudioTrack.getMinVolume()..AudioTrack.getMaxVolume(),
-                step = 0.01f,
+                step = 0.02f,
             )
             SliderConfig(
                 key = AudioConfigKeys.BUFFER_SCALE,

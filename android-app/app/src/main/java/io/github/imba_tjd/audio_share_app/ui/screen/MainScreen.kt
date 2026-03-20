@@ -37,6 +37,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import io.github.imba_tjd.audio_share_app.R
 import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 sealed class Route(@field:StringRes val labelId: Int, val icon: ImageVector) {
     data object Home : Route(R.string.label_home, Icons.Default.Home)
@@ -49,7 +52,7 @@ sealed class Route(@field:StringRes val labelId: Int, val icon: ImageVector) {
 @Composable
 fun MainScreen() {
     val routes = listOf(Route.Home, Route.Audio, Route.Settings)
-    var selectdTab: Route = Route.Home
+    var selectdTab: Route by remember { mutableStateOf(Route.Home) }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),

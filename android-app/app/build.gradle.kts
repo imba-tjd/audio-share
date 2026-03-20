@@ -19,8 +19,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.kotlin.plugin.serialization)
-    alias(libs.plugins.kotlin.plugin.parcelize)
+//    alias(libs.plugins.kotlin.plugin.serialization)
+//    alias(libs.plugins.kotlin.plugin.parcelize)
 //    alias(libs.plugins.protobuf)
 }
 
@@ -30,7 +30,7 @@ android {
 
     defaultConfig {
         applicationId = "io.github.mkckr0.audio_share_app"
-        minSdk = 23
+        minSdk = 31
         targetSdk = 35
         versionCode = 1
         versionName = "0.1"
