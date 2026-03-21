@@ -31,18 +31,19 @@ import io.github.imba_tjd.audio_share_app.model.getInteger
 import io.github.imba_tjd.audio_share_app.model.getResourceUri
 import io.github.imba_tjd.audio_share_app.model.networkConfigDataStore
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.plus
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration.Companion.seconds
 
 @OptIn(UnstableApi::class)
@@ -61,14 +62,21 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
                     COMMAND_RELEASE,
                 )
                 .build()
+        ).setPlaylist( // 必须提供一个 Dummy MediaItem，否则在 BUFFERING 或 READY 状态时报错 "Empty playlist only allowed in STATE_IDLE..."
+            listOf(
+                MediaItemData.Builder("dummy_uid")
+                    .setMediaItem(MediaItem.Builder().setMediaId("dummy_uid").build())
+                    .build()
+            )
         )
         .build()
 
     private var _state: State = _initState
     override fun getState(): State = _state
 
-    private val netClientCallback = NetClientCallBack()
-    private val netClient = NetClient(netClientCallback)
+    private val netClient = NetClient { msg ->
+        message = msg
+    }
 
     private var _audioTrack: AudioTrack? = null
     private val audioTrack get() = _audioTrack!!
@@ -76,126 +84,138 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
     private var _loudnessEnhancer: LoudnessEnhancer? = null
 
     private val scope: CoroutineScope = MainScope()
-    private val retryScope: CoroutineScope = MainScope()
 
-    // 用于控制音频播放循环的协程
-    private var audioLoopJob: Job? = null
+    // 唯一负责控制生命周期的 Job
     private var playJob: Job? = null
 
     companion object {
         private var _message by mutableStateOf("")
-
         var message: String
             get() = _message
             set(v) { _message += "${v}\n" }
     }
 
     override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
-        _message = context.getString(R.string.label_connecting) + "\n"
-
         return CallbackToFutureAdapter.getFuture { completer ->
             playJob?.cancel()
-            playJob = scope.launch {
-                try {
-                    Log.d(tag, "handleSetPlayWhenReady playWhenReady=$playWhenReady")
-                    _state = state.buildUpon().setPlayerError(null).build()
-                    invalidateState()
-                    if (playWhenReady) {
-                        val networkConfig = context.networkConfigDataStore.data.first()
-                        if (!isActive) return@launch
-
-                        val host = networkConfig[stringPreferencesKey(NetworkConfigKeys.HOST)]
-                            ?: context.getString(R.string.default_host)
-                        val port = networkConfig[intPreferencesKey(NetworkConfigKeys.PORT)]
-                            ?: context.getInteger(R.integer.default_port)
-
-                        val mediaItem = MediaItem.fromUri("tcp://$host:$port").buildUpon()
-                            .setMediaMetadata(
-                                MediaMetadata.Builder()
-                                    .setTitle("Audio Share")
-                                    .setArtist("$host:$port")
-                                    .setArtworkUri(context.getResourceUri(R.drawable.artwork))
-                                    .build()
-                            )
-                            .build()
-
-                        _state = state.buildUpon()
-                            .setPlaylist(
-                                listOf(
-                                    MediaItemData.Builder("media-1")
-                                        .setMediaItem(mediaItem)
-                                        .build()
-                                )
-                            )
-                            .setCurrentMediaItemIndex(0)
-                            .setPlaybackState(STATE_BUFFERING)
-                            .setPlayWhenReady(true, PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
-                            .build()
-                        invalidateState()
-
-                        netClient.start()
-                    } else {
-                        stopAll()
-                        retryScope.coroutineContext.cancelChildren()
-                        _state = state.buildUpon()
-                            .setPlayWhenReady(false, PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
-                            .build()
-                        invalidateState()
-                        message = context.getString(R.string.label_paused)
+            if (playWhenReady) {
+                playJob = scope.launch {
+                    try {
+                        startInternal()
+                    } finally {
+                        // 确保即使协程被取消，也能优雅执行清理
+                        withContext(NonCancellable) {
+                            stopAllInternal()
+                        }
                     }
-                    completer.set(Unit)
-                } catch (e: Exception) {
-                    Log.e(tag, "handleSetPlayWhenReady", e)
-                    completer.setException(e)
+                }
+            } else {
+                scope.launch {
+                    stopAllInternal()
+                    updatePlaybackState(STATE_IDLE, false)
+                    message = context.getString(R.string.label_paused)
+                }
+            }
+            completer.set(Unit)
+        }
+    }
+
+    private suspend fun startInternal() {
+        _message = context.getString(R.string.label_connecting) + "\n"
+
+        while (currentCoroutineContext().isActive) {
+            try {
+                updatePlaybackState(STATE_BUFFERING, true)
+
+                // 1. 挂起直到连接成功 (ServerInfo 已被内部解析并由 onMessage 汇报)
+                netClient.connect()
+
+                // 2. 更新 UI 为 Ready
+                message = context.getString(R.string.label_started)
+                updatePlaybackState(STATE_READY, true)
+
+                // 3. 阻塞式执行拉取与播放，直到异常或主动取消
+                runAudioLoop()
+
+            } catch (e: CancellationException) {
+                throw e // 让外层 playJob 正确取消
+            } catch (e: Exception) {
+                Log.e(tag, "Playback error", e)
+
+                // 出现异常先关闭旧连接，清理声卡，随后重试
+                stopAllInternal()
+                val reason = e.message ?: "未知网络错误"
+
+                for (wait in 3 downTo 1) {
+                    message = "$reason, ${context.getString(R.string.label_retry).format(wait)}"
+                    delay(1.seconds)
                 }
             }
         }
     }
 
-    override fun handleStop(): ListenableFuture<*> {
-        Log.d(tag, "handleStop")
-        playJob?.cancel()
-        stopAll()
-        retryScope.coroutineContext.cancelChildren()
-        _state = _initState.buildUpon()
-            .setPlaybackState(STATE_IDLE)
-            .setPlayWhenReady(false, PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+    private fun updatePlaybackState(playbackState: Int, playWhenReady: Boolean) {
+        _state = state.buildUpon()
+            .setPlaybackState(playbackState)
+            .setPlayWhenReady(playWhenReady, PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
             .build()
         invalidateState()
-        message = context.getString(R.string.label_stopped)
+    }
+
+    override fun handleStop(): ListenableFuture<*> {
+        playJob?.cancel()
+        scope.launch {
+            stopAllInternal()
+            _state = _initState.buildUpon().setPlaybackState(STATE_IDLE).build()
+            invalidateState()
+            message = context.getString(R.string.label_stopped)
+        }
         return immediateVoidFuture()
     }
 
     override fun handleRelease(): ListenableFuture<*> {
-        Log.d(tag, "handleRelease")
         playJob?.cancel()
-        stopAll()
-        scope.cancel()
-        retryScope.cancel()
-        netClientCallback.cbscope.cancel()
-        _state = State.Builder().build()
+        scope.launch {
+            stopAllInternal()
+            scope.cancel()
+        }
         return immediateVoidFuture()
     }
 
-    private fun stopAll() {
+    // 统筹释放资源（NetClient 的 stop 包含挂起等待 END 的逻辑）
+    private suspend fun stopAllInternal() {
         netClient.stop()
-        audioLoopJob?.cancel()
-        retryScope.coroutineContext.cancelChildren()
-
         _loudnessEnhancer?.release()
         _loudnessEnhancer = null
-
         _audioTrack?.run {
-            pause()
-            flush()
-            release()
+            try { pause(); flush(); release() } catch (e: Exception) {}
         }
         _audioTrack = null
     }
 
+    // 核心拉取数据的循环协程
+    private suspend fun runAudioLoop() = withContext(Dispatchers.IO) {
+        initAudioTrack()
+
+        var silenceBuffer = ByteArray(480 * 2 * 4)
+
+        while (isActive) {
+            val payload = netClient.jitterBuffer.pull()
+
+            if (payload != null) {
+                if (silenceBuffer.size != payload.size) {
+                    silenceBuffer = ByteArray(payload.size)
+                }
+                audioTrack.write(payload, 0, payload.size, AudioTrack.WRITE_BLOCKING)
+            } else {
+                audioTrack.write(silenceBuffer, 0, silenceBuffer.size, AudioTrack.WRITE_BLOCKING)
+            }
+        }
+    }
+
     // 初始化硬件音频层
     private suspend fun initAudioTrack() {
-        val encoding = AudioFormat.ENCODING_PCM_32BIT // 根据未解码Opus的假设，先用PCM32
+        val encoding = AudioFormat.ENCODING_PCM_32BIT
         val channelMask = AudioFormat.CHANNEL_OUT_STEREO
         val sampleRate = 48000
 
@@ -241,78 +261,5 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
         }
 
         audioTrack.play()
-    }
-
-    // 核心拉取数据的循环协程
-    private fun startAudioLoop() {
-        audioLoopJob?.cancel()
-        audioLoopJob = scope.launch(Dispatchers.IO) {
-            initAudioTrack()
-
-            // 预设一段静音数据（默认 480 帧，后续会自动适应包大小）
-            var silenceBuffer = ByteArray(480 * 2 * 4)
-
-            while (isActive) {
-                val payload = netClient.jitterBuffer.pull()
-
-                if (payload != null) {
-                    // 动态调整静音数组的大小以匹配正常的 payload 长度
-                    if (silenceBuffer.size != payload.size) {
-                        silenceBuffer = ByteArray(payload.size)
-                    }
-                    // 阻塞式写入，由底层声卡控制消费速度
-                    audioTrack.write(payload, 0, payload.size, AudioTrack.WRITE_BLOCKING)
-                } else {
-                    // Jitter Buffer 没有就绪数据（缓冲中或丢包），填充静音以保持声卡时钟
-                    audioTrack.write(silenceBuffer, 0, silenceBuffer.size, AudioTrack.WRITE_BLOCKING)
-                }
-            }
-        }
-    }
-
-    inner class NetClientCallBack : NetClient.Callback {
-        override val cbscope: CoroutineScope = MainScope() + CoroutineName("NetClientCallbackScope")
-
-        override suspend fun onServerFound(ip: String, meta: String) {
-            message = "Found Server: ${ip}"
-        }
-
-        override suspend fun onConnected() {
-            // 连接成功，由 AudioPlayer 启动播放线程拉取数据
-            startAudioLoop()
-
-            _state = state.buildUpon()
-                .setPlaybackState(STATE_READY)
-                .build()
-            invalidateState()
-            Log.d(tag, "onPlaybackStarted")
-            message = context.getString(R.string.label_started)
-        }
-
-        override suspend fun onError(msg: String, e: Throwable?) {
-            if (e is CancellationException) return
-
-            // switch to retryScope to prevent NetClient cancel callback scope
-            retryScope.coroutineContext.cancelChildren()
-            retryScope.launch {
-                netClient.stop()
-
-                val reason = e?.message ?: msg
-                var wait = 3
-                while (wait > 0) {
-                    message = "$reason, ${context.getString(R.string.label_retry).format(wait)}"
-                    delay(1.seconds)
-                    --wait
-                }
-
-                _state = state.buildUpon()
-                    .setPlayerError(null)
-                    .setPlaybackState(STATE_BUFFERING)
-                    .build()
-                invalidateState()
-
-                netClient.start()
-            }
-        }
     }
 }

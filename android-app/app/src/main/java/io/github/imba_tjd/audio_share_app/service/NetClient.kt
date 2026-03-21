@@ -9,7 +9,6 @@ import io.ktor.network.sockets.aSocket
 import io.ktor.network.sockets.port
 import io.ktor.utils.io.core.ByteReadPacket
 import io.ktor.utils.io.readText
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.readByteArray
 import java.nio.ByteBuffer
@@ -24,7 +24,6 @@ import java.nio.ByteOrder
 import java.util.TreeMap
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
-import kotlin.time.TimeSource
 
 // 数据包实体
 class UdpAudioPacket(
@@ -69,178 +68,191 @@ class JitterBuffer(
         }
     }
 
+    fun clear() {
+        lock.withLock {
+            buffer.clear()
+            expectedSeq = -1
+            preBuffering = true
+        }
+    }
+
     private fun isSeqOlder(seq: Int, expected: Int): Boolean {
         val diff = (seq.toShort() - expected.toShort()).toShort()
         return diff < 0
     }
 }
 
-class NetClient(cb: Callback) {
+class NetClient(private val onMessage: (String) -> Unit) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineName("NetClient"))
     val jitterBuffer = JitterBuffer()
 
-    interface Callback {
-        val cbscope: CoroutineScope
-        suspend fun onServerFound(ip: String, meta: String)
-        suspend fun onConnected()
-        suspend fun onError(msg: String, e: Throwable?)
-    }
-
-    private var callback: Callback = cb
-    private lateinit var selector: SelectorManager
+    private var selector: SelectorManager? = null
     private var controlSocket: BoundDatagramSocket? = null
     private var dataSocket: BoundDatagramSocket? = null
-    private var serverAddr7777: InetSocketAddress? = null // 业务地址 (7777)
+
+    // 用于发送 FIN / PIN 的远端地址
+    private var serverBusinessAddr: InetSocketAddress? = null
+
+    @Volatile
     private var running = false
 
-    fun start() {
-        running = true
-        selector = SelectorManager(Dispatchers.IO)
-
-        scope.launch {
-            try {
-                // 1. 发现阶段 (Port: 8888)
-                val discoveryInfo = discoverServer()
-
-                // 获取 IP 字符串用于回调和构造新地址
-                val ipString = discoveryInfo.address.hostname
-
-                // 2. 构造业务地址 (强制切换到 7777)
-                serverAddr7777 = InetSocketAddress(ipString, 7777)
-
-                callback.launch {
-                    onServerFound(ipString, "UDP:7777")
-                }
-
-                // 3. 连接阶段 (指向 7777)
-                setupChannels(serverAddr7777!!)
-
-                startControlLoopLaunch()
-                startDataLoopLaunch()
-
-                callback.launch { onConnected() }
-
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                callback.launch { onError(e.message ?: "error", e) }
-                stop()
-            }
-        }
-    }
-
-    fun stop() {
-        running = false
-        scope.coroutineContext.cancelChildren()
-        controlSocket?.dispose()
-        dataSocket?.dispose()
-        if (::selector.isInitialized) selector.close()
-    }
-
-    private data class ServerInfo(
+    data class ServerInfo(
         val address: InetSocketAddress,
+        val dataPort: Int,
         val useOpus: Boolean,
         val opusSkip: Int
     )
 
-    private suspend fun discoverServer(): ServerInfo {
-        // 使用随机本地端口发送广播，目标为 8888
-        val sock = aSocket(selector).udp().bind { broadcast = true }
+    suspend fun connect(): ServerInfo = withContext(Dispatchers.IO) {
+        stop() // 确保清理旧连接
+        running = true
+        val sel = SelectorManager(Dispatchers.IO).also { selector = it }
+
+        try {
+            // 1. 发现服务器 (8888)
+            val info = discoverServer(sel)
+            onMessage("Found Server: ${info.address.hostname}")
+
+            // 2. 建立业务通道 (依据服务端下发的动态端口)
+            val targetAddr = InetSocketAddress(info.address.hostname, info.dataPort)
+            serverBusinessAddr = targetAddr
+
+            setupChannels(sel, targetAddr)
+
+            // 3. 启动后台循环
+            startHeartbeatLoop(targetAddr)
+            startDataLoop()
+
+            return@withContext info
+        } catch (e: Exception) {
+            stop()
+            throw e
+        }
+    }
+
+    suspend fun stop() {
+        if (!running) return
+        running = false
+
+        try {
+            controlSocket?.let { sock ->
+                serverBusinessAddr?.let { addr ->
+                    repeat(3) {
+                        sock.send(Datagram(ByteReadPacket("FIN".encodeToByteArray()), addr))
+                        val resp = sock.receive()
+                        if (resp.packet.readText() == "END")
+                            return
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // FIN/END 过程中的超时或网络断开可以安全忽略
+        } finally {
+            controlSocket?.dispose()
+            dataSocket?.dispose()
+            withContext(Dispatchers.IO) {
+                selector?.close()
+            }
+
+            selector = null
+            controlSocket = null
+            dataSocket = null
+            serverBusinessAddr = null
+
+            // 取消内部的所有循环子协程，准备接受下一次 connect
+            scope.coroutineContext.cancelChildren()
+            jitterBuffer.clear()
+        }
+    }
+
+    private suspend fun discoverServer(sel: SelectorManager): ServerInfo {
+        val sock = aSocket(sel).udp().bind { broadcast = true }
         val broadcastAddr = InetSocketAddress("255.255.255.255", 8888)
 
-        repeat(5) {
-            val probe = "PROBE".encodeToByteArray()
-            sock.send(Datagram(ByteReadPacket(probe), broadcastAddr))
-
-            val result = withTimeoutOrNull(1000) { sock.receive() }
-            if (result != null) {
-                val sender = result.address as InetSocketAddress
-                val text = result.packet.readText()
-                sock.close() // 发现后关闭临时 socket
-                return parseBootMessage(text).copy(address = sender)
+        try {
+            repeat(5) {
+                sock.send(Datagram(ByteReadPacket("PROBE".encodeToByteArray()), broadcastAddr))
+                val result = withTimeoutOrNull(1000) { sock.receive() }
+                if (result != null) {
+                    val text = result.packet.readText()
+                    return parseBootMessage(text).copy(address = result.address as InetSocketAddress)
+                }
             }
+        } finally {
+            sock.dispose()
         }
-        sock.dispose()
-        throw Exception("No server found on port 8888")
+        throw Exception("未找到音频服务器 (8888)")
     }
 
-    private fun parseBootMessage(text: String): ServerInfo {
-        val lines = text.split('\n')
-        var useOpus = false
-        var opusSkip = 0
-        for (line in lines) {
-            if (line.startsWith("OPUS:")) {
-                useOpus = true
-                opusSkip = line.substringAfter("OPUS:").toIntOrNull() ?: 0
-            }
-        }
-        return ServerInfo(InetSocketAddress("0.0.0.0", 0), useOpus, opusSkip)
-    }
+    private suspend fun setupChannels(sel: SelectorManager, server: InetSocketAddress) {
+        val dSock = aSocket(sel).udp().bind().also { dataSocket = it }
+        val cSock = aSocket(sel).udp().bind().also { controlSocket = it }
 
-    private suspend fun setupChannels(server: InetSocketAddress) {
-        // 创建本地数据端口和控制端口
-        dataSocket = aSocket(selector).udp().bind()
-        controlSocket = aSocket(selector).udp().bind()
-
-        val dataPort = dataSocket!!.localAddress.port()
+        val dataPort = dSock.localAddress.port()
         val msg = "SYN:$dataPort".encodeToByteArray()
 
         repeat(3) {
-            controlSocket!!.send(Datagram(ByteReadPacket(msg), server))
-            val resp = withTimeoutOrNull(2_000) { controlSocket!!.receive() }
+            cSock.send(Datagram(ByteReadPacket(msg), server))
+            val resp = withTimeoutOrNull(2000) { cSock.receive() }
             if (resp != null && resp.packet.readText() == "ACK") return
         }
-
-        throw Exception("Handshake failed on 7777")
+        throw Exception("握手失败 (7777)")
     }
 
-    private fun startControlLoopLaunch() = scope.launch {
-        val server = serverAddr7777 ?: return@launch
-        var lastPong = TimeSource.Monotonic.markNow()
-
-        // 监听控制响应 (PON)
-        launch {
-            while (running) {
-                val pkt = controlSocket!!.receive()
-                if (pkt.packet.readText() == "PON") {
-                    lastPong = TimeSource.Monotonic.markNow()
-                }
-            }
-        }
-
-        // 发送心跳 (PIN) 到 7777
+    private fun startHeartbeatLoop(server: InetSocketAddress) = scope.launch {
+        // 本来这里有一个receive PON，更新最后收到回复的时间，再在pin里检查是否超时的逻辑的。但是因为stop时要接收END，就无法在此处接收了
         while (running) {
-            delay(1_000)
+            delay(1000)
             try {
                 controlSocket?.send(Datagram(ByteReadPacket("PIN".encodeToByteArray()), server))
             } catch (e: Exception) {
                 Log.i("NetClient PIN", "failed")
             }
-
-//            if (TimeSource.Monotonic.markNow() - lastPong > 6.seconds) {
-//                throw Exception("Heartbeat timeout")
-            // TODO: 这里会导致程序崩溃
-//            }
         }
     }
 
-    private fun startDataLoopLaunch() = scope.launch {
+    private fun startDataLoop() = scope.launch {
         val sock = dataSocket ?: return@launch
-        while (running) {
-            val datagram = sock.receive()
-            val rawBytes = datagram.packet.readByteArray()
-            if (rawBytes.size <= 8) continue
+        try {
+            while (running) {
+                val datagram = sock.receive()
+                val rawBytes = datagram.packet.readByteArray()
+                if (rawBytes.size <= 8) continue
 
-            val buf = ByteBuffer.wrap(rawBytes).order(ByteOrder.LITTLE_ENDIAN)
-            buf.short // padding
-            val seq = buf.short.toInt() and 0xFFFF
-            val timestamp = buf.int.toLong() and 0xFFFFFFFFL
+                val buf = ByteBuffer.wrap(rawBytes).order(ByteOrder.LITTLE_ENDIAN)
+                buf.short // padding
+                val seq = buf.short.toInt() and 0xFFFF
+                val timestamp = buf.int.toLong() and 0xFFFFFFFFL
 
-            val payload = ByteArray(rawBytes.size - 8)
-            buf.get(payload)
-            jitterBuffer.put(UdpAudioPacket(seq, timestamp, payload))
+                val payload = ByteArray(rawBytes.size - 8)
+                buf.get(payload)
+                jitterBuffer.put(UdpAudioPacket(seq, timestamp, payload))
+            }
+        } catch (e: Exception) {
+            // 接收异常（如socket关闭）时自然退出循环
         }
     }
 
-    private fun Callback.launch(block: suspend Callback.() -> Unit) =
-        cbscope.launch { block() }
+    private fun parseBootMessage(text: String): ServerInfo {
+        var dataPort = 7777 // 默认 fallback
+        var useOpus = false
+        var opusSkip = 0
+
+        // 动态解析指令，未知的直接忽略
+        text.lines().forEach { line ->
+            val parts = line.split(":", limit = 2)
+            if (parts.size == 2) {
+                val key = parts[0].trim()
+                val value = parts[1].trim()
+                when (key) {
+                    "UDP" -> dataPort = value.toIntOrNull() ?: 7777
+                    "OPUS" -> {
+                        useOpus = true
+                        opusSkip = value.toIntOrNull() ?: 0
+                    }
+                }
+            }
+        }
+        return ServerInfo(InetSocketAddress("0.0.0.0", 0), dataPort, useOpus, opusSkip)
+    }
 }
