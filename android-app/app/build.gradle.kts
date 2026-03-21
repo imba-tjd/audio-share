@@ -29,7 +29,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "io.github.mkckr0.audio_share_app"
+        applicationId = "io.github.imba_tjd.audio_share_app"
         minSdk = 31
         targetSdk = 35
         versionCode = 1

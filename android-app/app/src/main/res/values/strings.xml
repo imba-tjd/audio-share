@@ -52,4 +52,5 @@
     <string name="label_timeout">Connect timeout</string>
     <string name="label_unresolved_address">Unresolved address</string>
     <string name="label_connecting">Connecting</string>
+    <string name="default_proto">UDP</string>
 </resources>

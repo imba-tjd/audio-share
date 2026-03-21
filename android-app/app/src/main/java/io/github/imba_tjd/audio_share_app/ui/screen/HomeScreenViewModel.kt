@@ -38,6 +38,7 @@ class HomeScreenViewModel(application: Application) : AndroidViewModel(applicati
     sealed interface UiState {
         data object Loading : UiState
         data class Success(
+            val proto: String,
             val host: String,
             val port: Int,
         ) : UiState
@@ -45,6 +46,7 @@ class HomeScreenViewModel(application: Application) : AndroidViewModel(applicati
 
     val uiState: StateFlow<UiState> = application.networkConfigDataStore.data.map {
         UiState.Success(
+            proto = it[stringPreferencesKey(NetworkConfigKeys.PROTO)] ?: application.getString(R.string.default_proto),
             host = it[stringPreferencesKey(NetworkConfigKeys.HOST)] ?: application.getString(R.string.default_host),
             port = it[intPreferencesKey(NetworkConfigKeys.PORT)] ?: application.getInteger(R.integer.default_port)
         )
@@ -54,9 +56,10 @@ class HomeScreenViewModel(application: Application) : AndroidViewModel(applicati
         initialValue = UiState.Loading,
     )
 
-    fun saveNetWorkSettings(host: String, port: Int): Job {
+    fun saveNetWorkSettings(proto: String, host: String, port: Int): Job {
         return viewModelScope.launch {
             getApplication<Application>().networkConfigDataStore.edit {
+                it[stringPreferencesKey(NetworkConfigKeys.PROTO)] = proto
                 it[stringPreferencesKey(NetworkConfigKeys.HOST)] = host
                 it[intPreferencesKey(NetworkConfigKeys.PORT)] = port
             }

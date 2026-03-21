@@ -17,6 +17,7 @@
 package io.github.imba_tjd.audio_share_app.model
 
 object NetworkConfigKeys {
+    const val PROTO = "proto"
     const val HOST = "host"
     const val PORT = "port"
 }

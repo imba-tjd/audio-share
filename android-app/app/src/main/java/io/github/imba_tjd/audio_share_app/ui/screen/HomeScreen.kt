@@ -1,10 +1,15 @@
 package io.github.imba_tjd.audio_share_app.ui.screen
 
+import android.widget.RadioGroup
 import androidx.activity.compose.LocalActivity
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -14,12 +19,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.WifiTethering
+import androidx.compose.material.icons.outlined.WifiTethering
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.derivedStateOf
@@ -30,7 +40,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
@@ -68,8 +80,9 @@ fun HomeScreenStateless(uiState: UiState.Success,
                         ) {
     val scope = rememberCoroutineScope()
 
-    var host by remember(uiState.host) { mutableStateOf(uiState.host) }
-    var port by remember(uiState.port) { mutableStateOf(uiState.port.toString()) }
+    var host by remember { mutableStateOf(uiState.host) }
+    var port by remember { mutableStateOf(uiState.port.toString()) }
+    var proto by remember { mutableStateOf(uiState.proto) }
     var started by remember { mutableStateOf(false) }
     val isHostError by remember { derivedStateOf {
         host.isEmpty()
@@ -82,16 +95,35 @@ fun HomeScreenStateless(uiState: UiState.Success,
         modifier = Modifier
             .padding(16.dp)
             .fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        Image(painterResource(R.drawable.artwork), "logo",
+            modifier = Modifier.size(128.dp).alpha(0.7f))
+
+        Surface() {
+            Row(
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                arrayOf("UDP", "TCP").forEach { p ->
+                    Row (verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable(!started) { proto = p }
+                        ) {
+                        RadioButton(
+                            selected = proto == p,
+                            onClick = { proto = p }
+                        )
+                        Text(p)
+                        Spacer(Modifier.size(16.dp))
+                    }
+                }
+            }
+        }
+
         Row(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(
-                8.dp,
-                Alignment.CenterHorizontally
-            ),
-            verticalAlignment = Alignment.Bottom
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             OutlinedTextField(
                 value = host,
@@ -104,6 +136,7 @@ fun HomeScreenStateless(uiState: UiState.Success,
                 isError = isHostError,
                 label = { Text(stringResource(R.string.label_host)) },
                 modifier = Modifier.weight(0.7f),
+                singleLine = true
             )
             OutlinedTextField(
                 value = port,
@@ -117,52 +150,61 @@ fun HomeScreenStateless(uiState: UiState.Success,
                 label = { Text(stringResource(R.string.label_port)) },
                 modifier = Modifier.weight(0.3f),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            )
-        }
-
-        IconButton(
-            onClick = {
-                if (isHostError || isPortError) {
-                    return@IconButton
-                }
-                scope.launch {
-                    if (started) {
-                        getMediaController().stop()
-                    } else {
-                        try {
-                            onSave(uiState.proto, host, port.toInt())
-                            getMediaController().play()
-                        } catch (_: NumberFormatException) {
-                            return@launch
-                        }
-                    }
-                }
-            },
-            modifier = Modifier.size(80.dp),
-        ) {
-            Icon(
-                imageVector = if (started) Icons.Default.PauseCircle else Icons.Default.PlayCircle,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.fillMaxSize()
+                singleLine = true
             )
         }
 
         Row(
-            modifier = Modifier.weight(1f)
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            OutlinedCard(
-                modifier = Modifier.fillMaxSize()
+            IconButton({}, Modifier.size(48.dp)){
+                Icon(
+                    imageVector = Icons.Default.WifiTethering,
+                    contentDescription = "probe",
+                    tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            IconButton(
+                onClick = {
+                    if (isHostError || isPortError) {
+                        return@IconButton
+                    }
+                    scope.launch {
+                        if (started) {
+                            getMediaController().stop()
+                        } else {
+                            try {
+                                onSave(proto, host, port.toInt())
+                                getMediaController().play()
+                            } catch (_: NumberFormatException) {
+                                return@launch
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier.size(80.dp),
             ) {
-                SelectionContainer {
-                    Text(
-                        text = AudioPlayer.message,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp)
-                            .verticalScroll(rememberScrollState())
-                    )
-                }
+                Icon(
+                    imageVector = if (started) Icons.Default.PauseCircle else Icons.Default.PlayCircle,
+                    contentDescription = "Play or pause",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+
+        OutlinedCard(modifier = Modifier.weight(1f)) {
+            SelectionContainer {
+                Text(
+                    text = AudioPlayer.message,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState())
+                )
             }
         }
     }
