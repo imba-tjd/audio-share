@@ -1,211 +1,246 @@
-/*
- *    Copyright 2022-2024 mkckr0 <https://github.com/mkckr0>
- *
- *    Licensed under the Apache License, Version 2.0 (the "License");
- *    you may not use this file except in compliance with the License.
- *    You may obtain a copy of the License at
- *
- *        http://www.apache.org/licenses/LICENSE-2.0
- *
- *    Unless required by applicable law or agreed to in writing, software
- *    distributed under the License is distributed on an "AS IS" BASIS,
- *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *    See the License for the specific language governing permissions and
- *    limitations under the License.
- */
-
 package io.github.imba_tjd.audio_share_app.service
 
-import android.content.Context
 import android.util.Log
-import io.github.imba_tjd.audio_share_app.R
 import io.ktor.network.selector.SelectorManager
 import io.ktor.network.sockets.BoundDatagramSocket
+import io.ktor.network.sockets.Datagram
 import io.ktor.network.sockets.InetSocketAddress
-import io.ktor.network.sockets.Socket
 import io.ktor.network.sockets.aSocket
-import io.ktor.network.sockets.openReadChannel
-import io.ktor.network.sockets.openWriteChannel
-import io.ktor.network.sockets.toJavaAddress
-import io.ktor.util.network.address
-import kotlinx.coroutines.CoroutineExceptionHandler
+import io.ktor.network.sockets.port
+import io.ktor.utils.io.core.ByteReadPacket
+import io.ktor.utils.io.readText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.io.readByteArray
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.channels.UnresolvedAddressException
-import kotlin.time.Duration.Companion.seconds
+import java.util.TreeMap
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlin.time.TimeSource
 
-class NetClient(val context: Context) {
+// 数据包实体
+class UdpAudioPacket(
+    val seq: Int,
+    val timestamp: Long,
+    val payload: ByteArray
+)
 
-    private val tag = NetClient::class.simpleName
+// 抖动缓冲区实现
+class JitterBuffer(
+    private val maxDepth: Int = 20,
+    private val minDepth: Int = 5
+) {
+    private val buffer = TreeMap<Int, UdpAudioPacket>()
+    private val lock = ReentrantLock()
+    private var expectedSeq: Int = -1
+    private var preBuffering = true
 
-    private fun defaultScope(): CoroutineScope = CoroutineScope(
-        SupervisorJob() + Dispatchers.IO + CoroutineName("NetClientCoroutine") + CoroutineExceptionHandler { _, cause ->
-            Log.d(tag, cause.stackTraceToString())
-            _callback?.launch {
-                onError(cause.message, cause)
+    fun put(packet: UdpAudioPacket) {
+        lock.withLock {
+            if (!preBuffering && expectedSeq != -1 && isSeqOlder(packet.seq, expectedSeq)) {
+                return
+            }
+            buffer[packet.seq] = packet
+            while (buffer.size > maxDepth) {
+                buffer.pollFirstEntry()
             }
         }
-    )
-
-    private var _callback: Callback? = null
-    private var _scope: CoroutineScope? = null
-    private val scope: CoroutineScope get() = _scope!!
-
-    private var _selectorManager: SelectorManager? = null
-    private val selectorManager get() = _selectorManager!!
-    private var _tcpSocket: Socket? = null
-    private val tcpSocket get() = _tcpSocket!!
-//    private var _udpSocket: ConnectedDatagramSocket? = null
-    private var _udpSocket: BoundDatagramSocket? = null
-    private val udpSocket get() = _udpSocket!!
-
-    private var _heartbeatLastTick = TimeSource.Monotonic.markNow()
-
-    enum class CMD {
-        CMD_NONE,
-        CMD_GET_FORMAT,
-        CMD_START_PLAY,
-        CMD_HEARTBEAT,
     }
+
+    fun pull(): ByteArray? {
+        lock.withLock {
+            if (buffer.isEmpty()) return null
+            if (preBuffering) {
+                if (buffer.size < minDepth) return null
+                preBuffering = false
+                expectedSeq = buffer.firstKey()
+            }
+            val packet = buffer.remove(expectedSeq)
+            expectedSeq = (expectedSeq + 1) and 0xFFFF
+            return packet?.payload
+        }
+    }
+
+    private fun isSeqOlder(seq: Int, expected: Int): Boolean {
+        val diff = (seq.toShort() - expected.toShort()).toShort()
+        return diff < 0
+    }
+}
+
+class NetClient(cb: Callback) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineName("NetClient"))
+    val jitterBuffer = JitterBuffer()
 
     interface Callback {
-        val scope: CoroutineScope
-        suspend fun log(message: String)
-        suspend fun onReceiveAudioFormat()
-        suspend fun onPlaybackStarted()
-        suspend fun onReceiveAudioData(audioData: ByteBuffer)
-        suspend fun onError(message: String?, cause: Throwable?)
-
-        fun launch(block: suspend Callback.() -> Unit): Job {
-            return scope.launch {
-                block()
-            }
-        }
+        val cbscope: CoroutineScope
+        suspend fun onServerFound(ip: String, meta: String)
+        suspend fun onConnected()
+        suspend fun onError(msg: String, e: Throwable?)
     }
 
-    fun start(host: String, port: Int, callback: Callback) {
-        Log.d(tag, "$host:$port")
-        _scope = defaultScope()
+    private var callback: Callback = cb
+    private lateinit var selector: SelectorManager
+    private var controlSocket: BoundDatagramSocket? = null
+    private var dataSocket: BoundDatagramSocket? = null
+    private var serverAddr7777: InetSocketAddress? = null // 业务地址 (7777)
+    private var running = false
+
+    fun start() {
+        running = true
+        selector = SelectorManager(Dispatchers.IO)
+
         scope.launch {
-            _callback = callback
-
-            if (_selectorManager != null) {
-                throw Exception("Repeat start")
-            }
-
-            _callback?.launch {
-                log("${context.getString(R.string.label_connecting)} $host:$port")
-            }
-            _selectorManager = SelectorManager(Dispatchers.IO)
-
             try {
-                _tcpSocket = withTimeout(3.seconds) {
-                    aSocket(selectorManager).tcp().connect(host, port)
+                // 1. 发现阶段 (Port: 8888)
+                val discoveryInfo = discoverServer()
+
+                // 获取 IP 字符串用于回调和构造新地址
+                val ipString = discoveryInfo.address.hostname
+
+                // 2. 构造业务地址 (强制切换到 7777)
+                serverAddr7777 = InetSocketAddress(ipString, 7777)
+
+                callback.launch {
+                    onServerFound(ipString, "UDP:7777")
                 }
-            } catch (e: TimeoutCancellationException) {
-                throw Exception(context.getString(R.string.label_timeout))
-            } catch (e: UnresolvedAddressException) {
-                throw Exception(context.getString(R.string.label_unresolved_address))
-            }
 
-            _callback?.launch {
-                log("TCP connected")
-            }
+                // 3. 连接阶段 (指向 7777)
+                setupChannels(serverAddr7777!!)
 
-            val tcpReadChannel = tcpSocket.openReadChannel()
-            val tcpWriteChannel = tcpSocket.openWriteChannel()
+                startControlLoopLaunch()
+                startDataLoopLaunch()
 
-            // get format
-            tcpWriteChannel.writeCMD(CMD.CMD_GET_FORMAT)
-            var cmd = tcpReadChannel.readCMD()
-            if (cmd != CMD.CMD_GET_FORMAT) {
-                return@launch
-            }
-//            val audioFormat = tcpReadChannel.readAudioFormat() ?: return@launch
-            _callback?.launch {
-                onReceiveAudioFormat()
-            }?.join()   // wait AudioTrack created
+                callback.launch { onConnected() }
 
-            _callback?.launch {
-                log("get format success")
-            }
-
-            // start play
-            tcpWriteChannel.writeCMD(CMD.CMD_START_PLAY)
-            cmd = tcpReadChannel.readCMD()
-            if (cmd != CMD.CMD_START_PLAY) {
-                return@launch
-            }
-            val id = tcpReadChannel.readIntLE()
-            if (id <= 0) {
-                return@launch
-            }
-
-            _callback?.launch {
-                onPlaybackStarted()
-            }
-
-//            _udpSocket = aSocket(selectorManager).udp()
-//                .connect(InetSocketAddress(host, port))
-            _udpSocket = aSocket(selectorManager).udp()
-                .bind(InetSocketAddress(tcpSocket.localAddress.toJavaAddress().address, 0))
-
-            // heartbeat loop
-            scope.launch {
-                _heartbeatLastTick = TimeSource.Monotonic.markNow()
-                while (true) {
-                    Log.d(tag, "check heartbeat")
-                    if (TimeSource.Monotonic.markNow() - _heartbeatLastTick > 5.seconds) {
-                        throw Exception("heartbeat timeout")
-                    }
-                    delay(3.seconds)
-                }
-            }
-            scope.launch {
-                while (true) {
-                    cmd = tcpReadChannel.readCMD()
-                    if (cmd == CMD.CMD_HEARTBEAT) {
-                        Log.d(tag, "receive heartbeat")
-                        _heartbeatLastTick = TimeSource.Monotonic.markNow()
-                        tcpWriteChannel.writeCMD(CMD.CMD_HEARTBEAT)
-                    }
-                }
-            }
-
-            // audio data read loop
-            scope.launch {
-                udpSocket.writeIntLE(id, InetSocketAddress(host, port))
-//                udpSocket.writeIntLE(id)
-                while (true) {
-                    val buf = udpSocket.readByteBuffer()
-                    _callback?.launch {
-                        onReceiveAudioData(buf.order(ByteOrder.LITTLE_ENDIAN))
-                    }
-                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                callback.launch { onError(e.message ?: "error", e) }
+                stop()
             }
         }
     }
 
     fun stop() {
-        Log.d(tag, "stop")
-        _callback?.scope?.cancel()
-        _callback = null
-        _scope?.cancel()
-        _scope = null
-        _selectorManager?.close()
-        _selectorManager = null
-        _udpSocket?.close()
-        _tcpSocket?.close()
+        running = false
+        scope.coroutineContext.cancelChildren()
+        controlSocket?.dispose()
+        dataSocket?.dispose()
+        if (::selector.isInitialized) selector.close()
     }
+
+    private data class ServerInfo(
+        val address: InetSocketAddress,
+        val useOpus: Boolean,
+        val opusSkip: Int
+    )
+
+    private suspend fun discoverServer(): ServerInfo {
+        // 使用随机本地端口发送广播，目标为 8888
+        val sock = aSocket(selector).udp().bind { broadcast = true }
+        val broadcastAddr = InetSocketAddress("255.255.255.255", 8888)
+
+        repeat(5) {
+            val probe = "PROBE".encodeToByteArray()
+            sock.send(Datagram(ByteReadPacket(probe), broadcastAddr))
+
+            val result = withTimeoutOrNull(1000) { sock.receive() }
+            if (result != null) {
+                val sender = result.address as InetSocketAddress
+                val text = result.packet.readText()
+                sock.close() // 发现后关闭临时 socket
+                return parseBootMessage(text).copy(address = sender)
+            }
+        }
+        sock.dispose()
+        throw Exception("No server found on port 8888")
+    }
+
+    private fun parseBootMessage(text: String): ServerInfo {
+        val lines = text.split('\n')
+        var useOpus = false
+        var opusSkip = 0
+        for (line in lines) {
+            if (line.startsWith("OPUS:")) {
+                useOpus = true
+                opusSkip = line.substringAfter("OPUS:").toIntOrNull() ?: 0
+            }
+        }
+        return ServerInfo(InetSocketAddress("0.0.0.0", 0), useOpus, opusSkip)
+    }
+
+    private suspend fun setupChannels(server: InetSocketAddress) {
+        // 创建本地数据端口和控制端口
+        dataSocket = aSocket(selector).udp().bind()
+        controlSocket = aSocket(selector).udp().bind()
+
+        val dataPort = dataSocket!!.localAddress.port()
+        val msg = "SYN:$dataPort".encodeToByteArray()
+
+        repeat(3) {
+            controlSocket!!.send(Datagram(ByteReadPacket(msg), server))
+            val resp = withTimeoutOrNull(2_000) { controlSocket!!.receive() }
+            if (resp != null && resp.packet.readText() == "ACK") return
+        }
+
+        throw Exception("Handshake failed on 7777")
+    }
+
+    private fun startControlLoopLaunch() = scope.launch {
+        val server = serverAddr7777 ?: return@launch
+        var lastPong = TimeSource.Monotonic.markNow()
+
+        // 监听控制响应 (PON)
+        launch {
+            while (running) {
+                val pkt = controlSocket!!.receive()
+                if (pkt.packet.readText() == "PON") {
+                    lastPong = TimeSource.Monotonic.markNow()
+                }
+            }
+        }
+
+        // 发送心跳 (PIN) 到 7777
+        while (running) {
+            delay(1_000)
+            try {
+                controlSocket?.send(Datagram(ByteReadPacket("PIN".encodeToByteArray()), server))
+            } catch (e: Exception) {
+                Log.i("NetClient PIN", "failed")
+            }
+
+//            if (TimeSource.Monotonic.markNow() - lastPong > 6.seconds) {
+//                throw Exception("Heartbeat timeout")
+            // TODO: 这里会导致程序崩溃
+//            }
+        }
+    }
+
+    private fun startDataLoopLaunch() = scope.launch {
+        val sock = dataSocket ?: return@launch
+        while (running) {
+            val datagram = sock.receive()
+            val rawBytes = datagram.packet.readByteArray()
+            if (rawBytes.size <= 8) continue
+
+            val buf = ByteBuffer.wrap(rawBytes).order(ByteOrder.LITTLE_ENDIAN)
+            buf.short // padding
+            val seq = buf.short.toInt() and 0xFFFF
+            val timestamp = buf.int.toLong() and 0xFFFFFFFFL
+
+            val payload = ByteArray(rawBytes.size - 8)
+            buf.get(payload)
+            jitterBuffer.put(UdpAudioPacket(seq, timestamp, payload))
+        }
+    }
+
+    private fun Callback.launch(block: suspend Callback.() -> Unit) =
+        cbscope.launch { block() }
 }
