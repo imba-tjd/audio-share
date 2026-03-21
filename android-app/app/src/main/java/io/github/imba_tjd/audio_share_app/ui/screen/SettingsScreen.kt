@@ -164,7 +164,7 @@ fun SettingsScreen() {
         PreferenceCategory(stringResource(R.string.label_about)) {
             Preference(
                 icon = R.drawable.github_mark,
-                title = "Audio Share",
+                title = "IMBA Audio Share",
                 summary = stringResource(R.string.project_url),
                 intent = rememberIntent(
                     Intent.ACTION_VIEW,

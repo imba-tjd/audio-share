@@ -14,11 +14,11 @@
     <bool name="default_start_playback_when_system_boot" translatable="false">false</bool>
     <bool name="default_start_playback_when_app_start" translatable="false">false</bool>
     <bool name="default_dynamic_color_from_wallpaper" translatable="false">false</bool>
-    <string name="default_dynamic_color_from_seed_color" translatable="false">#63A002</string>
+    <string name="default_dynamic_color_from_seed_color" translatable="false">#66CCFF</string>
     <bool name="default_auto_check_for_update" translatable="false">false</bool>
 
     <!-- URLs -->
-    <string name="project_url" translatable="false">https://github.com/mkckr0/audio-share</string>
-    <string name="latest_release_url" translatable="false">https://github.com/mkckr0/audio-share/releases/latest</string>
-    <string name="issues_url" translatable="false">https://github.com/mkckr0/audio-share/issues</string>
+    <string name="project_url" translatable="false">https://github.com/imba-tjd/audio-share</string>
+    <string name="latest_release_url" translatable="false">https://github.com/imba-tjd/audio-share/releases/latest</string>
+    <string name="issues_url" translatable="false">https://github.com/imba-tjd/audio-share/issues</string>
 </resources>

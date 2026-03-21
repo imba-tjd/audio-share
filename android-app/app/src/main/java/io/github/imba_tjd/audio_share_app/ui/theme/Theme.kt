@@ -56,7 +56,7 @@ fun AppTheme(
 
 @Composable
 fun AppThemeInternal(
-    uiState: UiState = UiState.Success(false, "#63A002"),
+    uiState: UiState = UiState.Success(false, "#66CCFF"),
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
