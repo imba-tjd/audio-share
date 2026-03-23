@@ -52,4 +52,7 @@
     <string name="label_timeout">连接超时</string>
     <string name="label_unresolved_address">无法解析的地址</string>
     <string name="label_connecting">正在连接</string>
+    <!-- 新增 -->
+    <string name="probing">探测局域网内服务器…</string>
+    <string name="probe_found">找到：</string>
 </resources>

@@ -51,6 +51,8 @@
     <string name="label_retry">will retry in %d seconds</string>
     <string name="label_timeout">Connect timeout</string>
     <string name="label_unresolved_address">Unresolved address</string>
-    <string name="label_connecting">Connecting</string>
-    <string name="default_proto">UDP</string>
+    <string name="label_connecting">Connecting to</string>
+    <!-- 新增 -->
+    <string name="probing">probing local server…</string>
+    <string name="probe_found">found:</string>
 </resources>

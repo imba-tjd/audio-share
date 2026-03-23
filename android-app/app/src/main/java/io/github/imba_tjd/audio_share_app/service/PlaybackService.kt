@@ -53,12 +53,6 @@ class PlaybackService : MediaSessionService() {
                 listOf(
                     CommandButton.Builder(CommandButton.ICON_STOP)
                         .setSessionCommand(customCommandStop)
-//                        .setSlots(
-//                            CommandButton.SLOT_BACK,
-//                            CommandButton.SLOT_FORWARD,
-//                            CommandButton.SLOT_BACK_SECONDARY,
-//                            CommandButton.SLOT_FORWARD_SECONDARY
-//                        )
                         .setDisplayName("Stop")
                         .setEnabled(true)
                         .build()

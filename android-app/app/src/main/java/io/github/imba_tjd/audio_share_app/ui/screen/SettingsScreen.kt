@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Wallpaper
@@ -60,14 +59,24 @@ import io.github.imba_tjd.audio_share_app.ui.theme.AppThemeInternal
 import io.github.imba_tjd.audio_share_app.ui.theme.isDynamicColorFromWallpaperAvailable
 import io.github.imba_tjd.audio_share_app.ui.theme.parseColor
 
-@SuppressLint("BatteryLife")
 @Composable
 fun SettingsScreen() {
-
     val context = LocalContext.current
-    
-    PreferenceScreen {
 
+    val getBatteryOptimizationState = {
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        powerManager.isIgnoringBatteryOptimizations(BuildConfig.APPLICATION_ID)
+    }
+
+    SettingsScreenStateLess(getBatteryOptimizationState())
+}
+
+@SuppressLint("BatteryLife")
+@Composable
+fun SettingsScreenStateLess(batteryOptimizationState: Boolean) {
+    val context = LocalContext.current
+
+    PreferenceScreen {
         PreferenceCategory(stringResource(R.string.label_auto_start)) {
             SwitchPreference(
                 icon = Icons.Default.PlayCircle,
@@ -75,17 +84,6 @@ fun SettingsScreen() {
                 title = stringResource(R.string.label_auto_start_when_app_starts),
                 defaultValue = context.getBoolean(R.bool.default_start_playback_when_app_start)
             )
-        }
-
-        val getBatteryOptimizationState = {
-            val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-            powerManager.isIgnoringBatteryOptimizations(BuildConfig.APPLICATION_ID)
-        }
-        var batteryOptimizationState by remember {
-            mutableStateOf(getBatteryOptimizationState())
-        }
-        LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-            batteryOptimizationState = getBatteryOptimizationState()
         }
 
         PreferenceCategory(stringResource(R.string.label_battery_optimization)) {
@@ -126,6 +124,8 @@ fun SettingsScreen() {
                     defaultValue = context.getBoolean(R.bool.default_dynamic_color_from_wallpaper),
                 )
             }
+
+            val colorInvalidText = stringResource(R.string.label_color_is_invalid)
             EditTextPreference(
                 icon = Icons.Default.ColorLens,
                 key = AppSettingsKeys.DYNAMIC_COLOR_FROM_SEED_COLOR,
@@ -133,13 +133,13 @@ fun SettingsScreen() {
                 defaultValue = stringResource(R.string.default_dynamic_color_from_seed_color),
             ) { newValue ->
                 if (newValue.isBlank()) {
-                    Toast.makeText(context, context.getString(R.string.label_color_is_invalid), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, colorInvalidText, Toast.LENGTH_SHORT).show()
                     return@EditTextPreference false
                 }
                 try {
                     Color.parseColor(newValue)
                 } catch (_: IllegalArgumentException) {
-                    Toast.makeText(context, context.getString(R.string.label_color_is_invalid), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, colorInvalidText, Toast.LENGTH_SHORT).show()
                     return@EditTextPreference false
                 }
                 return@EditTextPreference true
@@ -197,6 +197,6 @@ fun SettingsScreen() {
 @Composable
 fun SettingsScreenPreview() {
     AppThemeInternal {
-        SettingsScreen()
+        SettingsScreenStateLess(false)
     }
 }

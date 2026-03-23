@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material.icons.outlined.WifiTethering
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +57,7 @@ import androidx.media3.session.MediaController
 import io.github.imba_tjd.audio_share_app.R
 import io.github.imba_tjd.audio_share_app.service.AudioPlayer
 import io.github.imba_tjd.audio_share_app.MainActivity
+import io.github.imba_tjd.audio_share_app.service.DiscoverClient
 import io.github.imba_tjd.audio_share_app.ui.screen.HomeScreenViewModel.UiState
 import io.github.imba_tjd.audio_share_app.ui.theme.AppThemeInternal
 import kotlinx.coroutines.launch
@@ -75,14 +78,17 @@ fun HomeScreen(viewModel: HomeScreenViewModel = viewModel()) {
 
 @Composable
 fun HomeScreenStateless(uiState: UiState.Success,
-                        onSave: (proto: String, host: String, port: Int) -> Unit,
+                        onSave: (proto: String, host: String, port: Int, use_opus: Boolean, opus_skip: Int) -> Unit,
                         getMediaController: suspend () -> MediaController
                         ) {
     val scope = rememberCoroutineScope()
 
-    var host by remember { mutableStateOf(uiState.host) }
-    var port by remember { mutableStateOf(uiState.port.toString()) }
-    var proto by remember { mutableStateOf(uiState.proto) }
+    var host by remember(uiState) { mutableStateOf(uiState.host) }
+    var port by remember(uiState) { mutableStateOf(uiState.port.toString()) }
+    var proto by remember(uiState) { mutableStateOf(uiState.proto) }
+    var use_opus by remember(uiState) { mutableStateOf(uiState.use_opus) }
+    var opus_skip by remember(uiState) { mutableStateOf(uiState.opus_skip) }
+
     var started by remember { mutableStateOf(false) }
     val isHostError by remember { derivedStateOf {
         host.isEmpty()
@@ -90,6 +96,7 @@ fun HomeScreenStateless(uiState: UiState.Success,
     val isPortError by remember { derivedStateOf {
         port.isEmpty()
     } }
+    val discoverclient by remember { mutableStateOf(DiscoverClient()) }
 
     Column(
         modifier = Modifier
@@ -98,9 +105,6 @@ fun HomeScreenStateless(uiState: UiState.Success,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Image(painterResource(R.drawable.artwork), "logo",
-            modifier = Modifier.size(128.dp).alpha(0.7f))
-
         Surface() {
             Row(
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -119,6 +123,25 @@ fun HomeScreenStateless(uiState: UiState.Success,
                     }
                 }
             }
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable(!started) {use_opus = !use_opus}
+            ) {
+                Checkbox(use_opus, onCheckedChange = {use_opus = it}, enabled = !started)
+                Text("Use Opus")
+                Spacer(Modifier.width(16.dp))
+            }
+
+            Spacer(Modifier.width(16.dp))
+
+            OutlinedTextField(opus_skip.toString(), onValueChange = {opus_skip = it.toIntOrNull() ?: 0},
+                label = { Text("Opus skip value") },
+                enabled = !started && use_opus
+            )
         }
 
         Row(
@@ -159,7 +182,25 @@ fun HomeScreenStateless(uiState: UiState.Success,
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
         ) {
-            IconButton({}, Modifier.size(48.dp)){
+            val probing_text = stringResource(R.string.probing)
+            val found_text = stringResource(R.string.probe_found)
+
+            IconButton({
+                scope.launch {
+                    AudioPlayer.message = probing_text
+                    val server = discoverclient.probe()
+                    server.onSuccess {
+                        proto = it.proto
+                        host = it.address.hostname
+                        port = it.address.port.toString()
+                        use_opus = it.useOpus
+                        opus_skip = it.opusSkip
+                        AudioPlayer.message = "${found_text} ${it.address.hostname}"
+                    }.onFailure {
+                        AudioPlayer.message = it.toString()
+                    }
+                }
+            }, Modifier.size(48.dp)){
                 Icon(
                     imageVector = Icons.Default.WifiTethering,
                     contentDescription = "probe",
@@ -167,6 +208,7 @@ fun HomeScreenStateless(uiState: UiState.Success,
                     modifier = Modifier.fillMaxSize()
                 )
             }
+
             IconButton(
                 onClick = {
                     if (isHostError || isPortError) {
@@ -177,8 +219,8 @@ fun HomeScreenStateless(uiState: UiState.Success,
                             getMediaController().stop()
                         } else {
                             try {
-                                onSave(proto, host, port.toInt())
-                                getMediaController().play()
+                                onSave(proto, host, port.toInt(), use_opus, opus_skip)
+                                getMediaController().play() // 调用PlaybackService，会转发给player，调用playWhenReady(true)
                             } catch (_: NumberFormatException) {
                                 return@launch
                             }
@@ -236,6 +278,6 @@ fun HomeScreenStateless(uiState: UiState.Success,
 private fun HomePrev() {
     val uiState = UiState.Success("UDP", "127.0.0.1", 8888)
     AppThemeInternal {
-        HomeScreenStateless(uiState, { _, _, _ -> }, { TODO() })
+        HomeScreenStateless(uiState, { _, _, _, _, _ -> }, { TODO() })
     }
 }

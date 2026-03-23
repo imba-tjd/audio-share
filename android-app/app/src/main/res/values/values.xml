@@ -19,6 +19,9 @@
 
     <!-- URLs -->
     <string name="project_url" translatable="false">https://github.com/imba-tjd/audio-share</string>
-    <string name="latest_release_url" translatable="false">https://github.com/imba-tjd/audio-share/releases/latest</string>
     <string name="issues_url" translatable="false">https://github.com/imba-tjd/audio-share/issues</string>
+
+    <!-- 新增 -->
+    <string name="default_proto" translatable="false">UDP</string>
+
 </resources>

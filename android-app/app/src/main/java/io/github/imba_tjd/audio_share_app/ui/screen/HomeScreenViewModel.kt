@@ -17,6 +17,7 @@
 package io.github.imba_tjd.audio_share_app.ui.screen
 
 import android.app.Application
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -41,6 +42,8 @@ class HomeScreenViewModel(application: Application) : AndroidViewModel(applicati
             val proto: String,
             val host: String,
             val port: Int,
+            val use_opus: Boolean = true,
+            val opus_skip: Int = 0
         ) : UiState
     }
 
@@ -48,7 +51,9 @@ class HomeScreenViewModel(application: Application) : AndroidViewModel(applicati
         UiState.Success(
             proto = it[stringPreferencesKey(NetworkConfigKeys.PROTO)] ?: application.getString(R.string.default_proto),
             host = it[stringPreferencesKey(NetworkConfigKeys.HOST)] ?: application.getString(R.string.default_host),
-            port = it[intPreferencesKey(NetworkConfigKeys.PORT)] ?: application.getInteger(R.integer.default_port)
+            port = it[intPreferencesKey(NetworkConfigKeys.PORT)] ?: application.getInteger(R.integer.default_port),
+            use_opus = it[booleanPreferencesKey(NetworkConfigKeys.USE_OPUS)] ?: true,
+            opus_skip = it[intPreferencesKey(NetworkConfigKeys.OPUS_SKIP)] ?: 0,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -56,12 +61,14 @@ class HomeScreenViewModel(application: Application) : AndroidViewModel(applicati
         initialValue = UiState.Loading,
     )
 
-    fun saveNetWorkSettings(proto: String, host: String, port: Int): Job {
+    fun saveNetWorkSettings(proto: String, host: String, port: Int, use_opus: Boolean, opus_skip: Int): Job {
         return viewModelScope.launch {
             getApplication<Application>().networkConfigDataStore.edit {
                 it[stringPreferencesKey(NetworkConfigKeys.PROTO)] = proto
                 it[stringPreferencesKey(NetworkConfigKeys.HOST)] = host
                 it[intPreferencesKey(NetworkConfigKeys.PORT)] = port
+                it[booleanPreferencesKey(NetworkConfigKeys.USE_OPUS)] = use_opus
+                it[intPreferencesKey(NetworkConfigKeys.OPUS_SKIP)] = opus_skip
             }
         }
     }
