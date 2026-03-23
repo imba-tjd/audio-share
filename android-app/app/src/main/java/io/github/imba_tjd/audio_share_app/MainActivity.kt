@@ -1,8 +1,6 @@
 package io.github.imba_tjd.audio_share_app
 
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.ComponentName
 import android.os.Build
 import android.os.Bundle

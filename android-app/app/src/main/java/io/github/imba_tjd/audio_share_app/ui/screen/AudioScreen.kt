@@ -30,6 +30,7 @@ import io.github.imba_tjd.audio_share_app.R
 import io.github.imba_tjd.audio_share_app.model.AudioConfigKeys
 import io.github.imba_tjd.audio_share_app.model.getFloat
 import io.github.imba_tjd.audio_share_app.ui.base.ConfigGroup
+import io.github.imba_tjd.audio_share_app.ui.base.EqualizerPresetSelector
 import io.github.imba_tjd.audio_share_app.ui.base.SliderConfig
 import io.github.imba_tjd.audio_share_app.ui.theme.AppTheme
 import io.github.imba_tjd.audio_share_app.ui.theme.AppThemeInternal
@@ -69,6 +70,7 @@ fun AudioScreen() {
                 valueRange = 0f..3000f,
                 step = 100f
             )
+            EqualizerPresetSelector()
         }
     }
 }

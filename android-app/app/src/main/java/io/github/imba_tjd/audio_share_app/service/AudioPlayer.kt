@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.media.AudioTrack.WRITE_BLOCKING
+import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import android.os.Looper
 import android.util.Log
@@ -18,6 +19,7 @@ import androidx.media3.common.Player.Commands
 import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
 import androidx.concurrent.futures.CallbackToFutureAdapter
+import androidx.datastore.preferences.core.intPreferencesKey
 import ashipo.jopus.OPUS_OK
 import ashipo.jopus.Opus
 import com.google.common.util.concurrent.Futures.immediateVoidFuture
@@ -82,6 +84,7 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
     private val audioTrack get() = _audioTrack!!
 
     private var _loudnessEnhancer: LoudnessEnhancer? = null
+    private var _equalizer: Equalizer? = null
 
     private val scope: CoroutineScope = MainScope()
 
@@ -198,6 +201,8 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
         udpClient.stop()
         _loudnessEnhancer?.release()
         _loudnessEnhancer = null
+        _equalizer?.release()
+        _equalizer = null
         _audioTrack?.run {
             try { pause(); flush(); release() } catch (e: Exception) {}
         }
@@ -239,7 +244,8 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
 
         val volume = audioConfig[floatPreferencesKey(AudioConfigKeys.VOLUME)]
             ?: context.getFloat(R.string.default_volume)
-        audioTrack.setVolume(volume)
+        if (volume != 1.0f)
+            audioTrack.setVolume(volume)
 
         val loudnessEnhancerGain = (audioConfig[floatPreferencesKey(AudioConfigKeys.LOUDNESS_ENHANCER)]
             ?: context.getFloat(R.string.default_loudness_enhancer)).toInt()
@@ -247,6 +253,14 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
         if (loudnessEnhancerGain > 0) {
             _loudnessEnhancer = LoudnessEnhancer(audioTrack.audioSessionId).apply {
                 setTargetGain(loudnessEnhancerGain)
+                enabled = true
+            }
+        }
+
+        val eq_choose_ndx = audioConfig[intPreferencesKey(AudioConfigKeys.EQ_CHOOSE_NDX)] ?: 0
+        if (eq_choose_ndx > 0) {
+            _equalizer = Equalizer(0, audioSessionId).apply {
+                usePreset(eq_choose_ndx.toShort())
                 enabled = true
             }
         }

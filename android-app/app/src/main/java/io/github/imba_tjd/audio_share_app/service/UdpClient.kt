@@ -1,5 +1,6 @@
 package io.github.imba_tjd.audio_share_app.service
 
+import android.os.SystemClock
 import android.util.Log
 import io.github.imba_tjd.audio_share_app.model.ServerInfo
 import io.ktor.network.selector.SelectorManager
@@ -28,6 +29,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.TreeMap
 import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.atomics.AtomicLong
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.update
 import kotlin.concurrent.withLock
 
 // 数据包实体
@@ -122,6 +126,9 @@ class UdpClient(val onReceiveError: (e: String) -> Unit) {
 
     var OnData: ((data: ByteArray) -> Unit)? = null
 
+    @OptIn(ExperimentalAtomicApi::class)
+    private var lastPongTime = AtomicLong(0)
+
     suspend fun connect(info: ServerInfo) = withContext(Dispatchers.IO) {
         stop() // 确保清理旧连接
         val sel = SelectorManager(Dispatchers.IO).also { selector = it }
@@ -179,15 +186,24 @@ class UdpClient(val onReceiveError: (e: String) -> Unit) {
         throw Exception("握手失败")
     }
 
+    @OptIn(ExperimentalAtomicApi::class)
     private fun startHeartbeatLoop() = scope.launch {
         val ping = "PIN".encodeToByteArray()
+        val timeoutMs = 10000L
 
         while (isActive) {
-            delay(1000)
+            delay(2000)
             try {
                 serverAddr?.let { socket?.send(Datagram(ByteReadPacket(ping), it)) }
             } catch (e: Exception) {
                 Log.i("NetClient PIN", "failed")
+            }
+
+            val now = SystemClock.elapsedRealtime()
+            val last = lastPongTime.load()
+            val dura = last - now
+            if (last != 0L && dura > timeoutMs) {
+                onReceiveError("Didn't receive PONG from server for ${dura/1000}s.")
             }
         }
     }
@@ -225,10 +241,11 @@ class UdpClient(val onReceiveError: (e: String) -> Unit) {
         }
     }
 
+    @OptIn(ExperimentalAtomicApi::class)
     private fun handleMeta(buf: ByteArray) {
         val cmd = String(buf, Charsets.UTF_8)
         when(cmd) {
-            "PON" -> ""
+            "PON" -> lastPongTime.store(SystemClock.elapsedRealtime())
         }
     }
 }

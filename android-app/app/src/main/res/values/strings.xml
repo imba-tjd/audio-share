@@ -56,4 +56,5 @@
     <string name="probing">probing local server…</string>
     <string name="probe_found">found:</string>
     <string name="sys_info">System Info</string>
+    <string name="label_eq_presets">Equalizer Presets</string>
 </resources>

@@ -56,4 +56,5 @@
     <string name="probing">探测局域网内服务器…</string>
     <string name="probe_found">找到：</string>
     <string name="sys_info">系统信息</string>
+    <string name="label_eq_presets">均衡器预设</string>
 </resources>

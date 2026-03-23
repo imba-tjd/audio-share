@@ -28,6 +28,7 @@ object AudioConfigKeys {
     const val VOLUME = "volume"
     const val BUFFER_SCALE = "buffer_scale"
     const val LOUDNESS_ENHANCER = "loudness_enhancer"
+    const val EQ_CHOOSE_NDX = "eq_choose_ndx"
 }
 
 object AppSettingsKeys {
