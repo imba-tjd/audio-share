@@ -24,6 +24,8 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.BugReport
@@ -34,24 +36,30 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Wallpaper
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import io.github.imba_tjd.audio_share_app.BuildConfig
 import io.github.imba_tjd.audio_share_app.R
 import io.github.imba_tjd.audio_share_app.model.AppSettingsKeys
+import io.github.imba_tjd.audio_share_app.model.SystemInfo
 import io.github.imba_tjd.audio_share_app.model.getBoolean
 import io.github.imba_tjd.audio_share_app.ui.base.EditTextPreference
 import io.github.imba_tjd.audio_share_app.ui.base.Preference
 import io.github.imba_tjd.audio_share_app.ui.base.PreferenceCategory
+import io.github.imba_tjd.audio_share_app.ui.base.PreferenceIcon
 import io.github.imba_tjd.audio_share_app.ui.base.PreferenceScreen
 import io.github.imba_tjd.audio_share_app.ui.base.SwitchPreference
 import io.github.imba_tjd.audio_share_app.ui.base.rememberIntent
@@ -68,15 +76,32 @@ fun SettingsScreen() {
         powerManager.isIgnoringBatteryOptimizations(BuildConfig.APPLICATION_ID)
     }
 
-    SettingsScreenStateLess(getBatteryOptimizationState())
+    val sysinfo = SystemInfo(context)
+
+    SettingsScreenStateLess(getBatteryOptimizationState(), sysinfo)
 }
 
 @SuppressLint("BatteryLife")
 @Composable
-fun SettingsScreenStateLess(batteryOptimizationState: Boolean) {
+fun SettingsScreenStateLess(batteryOptimizationState: Boolean, sysinfo: SystemInfo) {
     val context = LocalContext.current
 
     PreferenceScreen {
+        PreferenceCategory(stringResource(R.string.sys_info)) {
+            ListItem(
+                leadingContent = { PreferenceIcon(Icons.Default.Info) },
+                headlineContent = {
+                    Text("hasLowLatencyFeature: ${sysinfo.hasLowLatencyFeature}")
+                }
+            )
+            ListItem({ Text("hasProFeature: ${sysinfo.hasProFeature}") },
+                leadingContent = { Spacer(Modifier.width(32.dp)) })
+            ListItem({ Text("sampleRate: ${sysinfo.sampleRate}") },
+                leadingContent = { Spacer(Modifier.width(32.dp)) })
+            ListItem({ Text("framesPerBuffer: ${sysinfo.framesPerBuffer}") },
+                leadingContent = { Spacer(Modifier.width(32.dp)) })
+        }
+
         PreferenceCategory(stringResource(R.string.label_auto_start)) {
             SwitchPreference(
                 icon = Icons.Default.PlayCircle,
@@ -197,6 +222,7 @@ fun SettingsScreenStateLess(batteryOptimizationState: Boolean) {
 @Composable
 fun SettingsScreenPreview() {
     AppThemeInternal {
-        SettingsScreenStateLess(false)
+        val sysinfo = SystemInfo(true, false, "48000", "192")
+        SettingsScreenStateLess(false, sysinfo)
     }
 }

@@ -55,4 +55,5 @@
     <!-- 新增 -->
     <string name="probing">探测局域网内服务器…</string>
     <string name="probe_found">找到：</string>
+    <string name="sys_info">系统信息</string>
 </resources>

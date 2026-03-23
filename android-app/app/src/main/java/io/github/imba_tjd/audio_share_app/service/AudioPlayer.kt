@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.media.AudioTrack.WRITE_BLOCKING
 import android.media.audiofx.LoudnessEnhancer
 import android.os.Looper
 import android.util.Log
@@ -13,12 +14,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player.Commands
 import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
 import androidx.concurrent.futures.CallbackToFutureAdapter
-import androidx.datastore.core.use
 import ashipo.jopus.OPUS_OK
 import ashipo.jopus.Opus
 import com.google.common.util.concurrent.Futures.immediateVoidFuture
@@ -41,9 +40,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.nio.FloatBuffer
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.time.LocalTime
-import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration.Companion.seconds
 
 @OptIn(UnstableApi::class)
@@ -75,7 +74,7 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
     private var _state: State = _initState
     override fun getState(): State = _state
 
-    private val netClient = NetClient { msg ->
+    private val udpClient = UdpClient { msg ->
         message = msg
     }
 
@@ -140,7 +139,7 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
 
                 // 1. 挂起直到连接成功 ()
                 message = context.getString(R.string.label_connecting)
-                netClient.connect(serverInfo)
+                udpClient.connect(serverInfo)
 
                 // 2. 更新 UI 为 Ready
                 message = context.getString(R.string.label_started)
@@ -175,9 +174,9 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
     }
 
     override fun handleStop(): ListenableFuture<*> {
-        playJob?.cancel()
+        playJob?.cancel() // 取消此任务会在playinternal的finally里执行stopAllInternal
         scope.launch {
-            stopAllInternal()
+//            stopAllInternal()
             _state = _initState.buildUpon().setPlaybackState(STATE_IDLE).build()
             invalidateState()
             message = context.getString(R.string.label_stopped)
@@ -187,130 +186,22 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
 
     override fun handleRelease(): ListenableFuture<*> {
         playJob?.cancel()
-        scope.launch {
-            stopAllInternal()
-            scope.cancel()
-        }
+//        scope.launch {
+//            stopAllInternal()
+//        }
+        scope.cancel()
         return immediateVoidFuture()
     }
 
     // 统筹释放资源（NetClient 的 stop 包含挂起等待 END 的逻辑）
     private suspend fun stopAllInternal() {
-        netClient.stop()
+        udpClient.stop()
         _loudnessEnhancer?.release()
         _loudnessEnhancer = null
         _audioTrack?.run {
             try { pause(); flush(); release() } catch (e: Exception) {}
         }
         _audioTrack = null
-    }
-
-    // 核心拉取数据的循环协程
-    private suspend fun runAudioLoop() = withContext(Dispatchers.IO) {
-        initAudioTrack() // Ensure this is set to AudioFormat.ENCODING_PCM_FLOAT
-
-        fun opus_native() {
-            val opus = Opus()
-            val initResult = opus.initDecoder(48000, 2)
-            if (initResult != OPUS_OK) {
-                println("Opus Init Error: ${opus.getErrorString(initResult)}")
-                return
-            }
-
-            val framesPerChannel = 480
-            val channels = 2
-            val pcmBuffer = FloatArray(framesPerChannel * channels)
-
-            try {
-                while (isActive) {
-                    // Jitter buffer returns payload, or null if a packet was lost/delayed
-                    val payload = netClient.jitterBuffer.pull()
-
-                    val framesDecoded = payload?.let { pl ->
-                        opus.decodeFloat(
-                            payload,              // encodedData (null for PLC)
-                            pl.size,         // encodedBytes (0 for PLC)
-                            pcmBuffer,            // outputBuffer
-                            framesPerChannel,     // outputBufferFrames
-                            1                     // fec (0 unless your payload has in-band FEC)
-                        )
-                    } ?:
-                    opus.plcFloat(pcmBuffer, framesPerChannel)
-
-                    if (framesDecoded > 0) {
-                        val totalSamples = framesDecoded * channels
-
-                        // AudioTrack WRITE_BLOCKING acts as our real-time clock.
-                        // Because Opus PLC always outputs audio even when payload is null,
-                        // this write guarantees the timing loop never spins out of control.
-                        audioTrack.write(pcmBuffer, 0, totalSamples, AudioTrack.WRITE_BLOCKING)
-                    } else if (framesDecoded < 0) {
-                        message = "Opus Decode Error: ${opus.getErrorString(framesDecoded)}"
-                    }
-                }
-            } finally {
-                opus.releaseDecoder()
-            }
-        }
-
-        fun opus_android() {
-            OpusDecoderAndroid().use { opus ->
-                opus.init()
-
-                val outBuffer = FloatArray(480 * 2)
-                val silenceBuffer = ByteArray(480 * 2 * 4)
-
-                while (isActive) {
-                    val payload = netClient.jitterBuffer.pull()
-                    if (payload != null) {
-                        val decoded_num = opus.decode(payload, outBuffer)
-                        audioTrack.write(outBuffer, 0, decoded_num, AudioTrack.WRITE_BLOCKING)
-                    } else {
-                        audioTrack.write(silenceBuffer, 0, silenceBuffer.size, AudioTrack.WRITE_BLOCKING)
-                    }
-                }
-            }
-        }
-
-//        val opus = OpusDecoderAndroid()
-//        opus.init(0)
-//        val outBuffer = FloatArray(480 * 2)
-//
-//        netClient.OnData = { data ->
-//            val decoded_num = opus.decode(data, outBuffer)
-//            audioTrack.write(outBuffer, 0, decoded_num, AudioTrack.WRITE_BLOCKING)
-//        }
-
-        val opus = Opus()
-        val initResult = opus.initDecoder(48000, 2)
-        if (initResult != OPUS_OK) {
-            throw RuntimeException("Opus init fail")
-        }
-
-        val framesPerChannel = 480
-        val channels = 2
-        val outBuffer = FloatArray(framesPerChannel * channels)
-
-        netClient.OnData = { data ->
-//            val num = opus.decodeFloat(
-//                data,              // encodedData (null for PLC)
-//                data.size,         // encodedBytes (0 for PLC)
-//                outBuffer,            // outputBuffer
-//                framesPerChannel,     // outputBufferFrames
-//                1                     // fec (0 unless your payload has in-band FEC)
-//            )
-//            audioTrack.write(outBuffer, 0, num, AudioTrack.WRITE_BLOCKING)
-
-            audioTrack.write(data, 0, data.size, AudioTrack.WRITE_BLOCKING)
-
-        }
-
-        while(isActive) {
-            delay(1000)
-        }
-
-//        opus_android()
-//        opus_native()
     }
 
     // 初始化硬件音频层
@@ -362,4 +253,137 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
 
         audioTrack.play()
     }
+
+    // 核心拉取数据的循环协程
+    private suspend fun runAudioLoop() = withContext(Dispatchers.IO) {
+        initAudioTrack() // Ensure this is set to AudioFormat.ENCODING_PCM_FLOAT
+
+        UdpOpusCb()
+    }
+
+    private suspend fun UdpPcmCb() {
+        udpClient.OnData = { data ->
+            val floatdata = FloatArray(data.size / 4)
+            ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(floatdata)
+            audioTrack.write(floatdata, 0, floatdata.size, WRITE_BLOCKING)
+        }
+
+        while(scope.isActive) {
+            delay(1000)
+        }
+    }
+
+    private suspend fun mockFilePcmCb() {
+        val client = MockFileClient(context) { message = it }
+        client.onPcmData = { data ->
+            audioTrack.write(data, 0, data.size, WRITE_BLOCKING)
+        }
+
+        client.start()
+
+        while(scope.isActive) {
+            delay(1000)
+        }
+    }
+
+    suspend fun mockFileOpusCb() {
+        val client = MockFileClient(context) { message = it }
+
+        val opus = Opus()
+        val initResult = opus.initDecoder(48000, 2)
+        if (initResult != OPUS_OK) {
+            throw RuntimeException("Opus init fail")
+        }
+
+        val outBuffer = FloatArray(480 * 2)
+
+        client.onOpusData = { data->
+            opus.decodeFloat(
+                data,              // encodedData (null for PLC)
+                data.size,         // encodedBytes (0 for PLC)
+                outBuffer,            // outputBuffer
+                480,     // outputBufferFrames
+                0                     // fec (0 unless your payload has in-band FEC)
+            )
+            audioTrack.write(outBuffer, 0, outBuffer.size, WRITE_BLOCKING)
+        }
+
+        client.startOpus()
+
+        while(scope.isActive) {
+            delay(1000)
+        }
+    }
+
+    suspend fun UdpOpusCb() {
+        val opus = Opus()
+        val initResult = opus.initDecoder(48000, 2)
+        if (initResult != OPUS_OK) {
+            throw RuntimeException("Opus init fail")
+        }
+
+        val framesPerChannel = 480
+        val channels = 2
+        val outBuffer = FloatArray(framesPerChannel * channels)
+
+        udpClient.OnData = { data ->
+            opus.decodeFloat(
+                data,
+                data.size,
+                outBuffer,
+                framesPerChannel,
+                0
+            )
+            audioTrack.write(outBuffer, 0, outBuffer.size, WRITE_BLOCKING)
+        }
+
+        while(scope.isActive) {
+            delay(1000)
+        }
+    }
+
+    private suspend fun UdpOpusJb() {
+        val opus = Opus()
+        val initResult = opus.initDecoder(48000, 2)
+        if (initResult != OPUS_OK) {
+            println("Opus Init Error: ${opus.getErrorString(initResult)}")
+            return
+        }
+
+        val framesPerChannel = 480
+        val channels = 2
+        val pcmBuffer = FloatArray(framesPerChannel * channels)
+
+        try {
+            while (scope.isActive) {
+                // Jitter buffer returns payload, or null if a packet was lost/delayed
+                val payload = udpClient.jitterBuffer.pull()
+
+                val framesDecoded = payload?.let { pl ->
+                    opus.decodeFloat(
+                        payload,              // encodedData (null for PLC)
+                        pl.size,         // encodedBytes (0 for PLC)
+                        pcmBuffer,            // outputBuffer
+                        framesPerChannel,     // outputBufferFrames
+                        0                     // fec (0 unless your payload has in-band FEC)
+                    )
+                } ?:
+                opus.plcFloat(pcmBuffer, framesPerChannel)
+
+                if (framesDecoded > 0) {
+                    val totalSamples = framesDecoded * channels
+
+                    // AudioTrack WRITE_BLOCKING acts as our real-time clock.
+                    // Because Opus PLC always outputs audio even when payload is null,
+                    // this write guarantees the timing loop never spins out of control.
+                    audioTrack.write(pcmBuffer, 0, totalSamples, AudioTrack.WRITE_BLOCKING)
+                } else if (framesDecoded < 0) {
+                    message = "Opus Decode Error: ${opus.getErrorString(framesDecoded)}"
+                }
+            }
+        } finally {
+            opus.releaseDecoder()
+        }
+    }
+
 }

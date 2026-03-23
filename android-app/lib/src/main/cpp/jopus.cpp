@@ -129,7 +129,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
         {"decode", "([BI[BII)I", reinterpret_cast<void*>(decode)},
         {"plc", "([BI)I", reinterpret_cast<void*>(plc)},
         {"decodeFloat", "([BI[FII)I", reinterpret_cast<void*>(decodeFloat)},
-        {"plcFloat", "([FI)I", reinterpret_cast<void*>(plc)},
+        {"plcFloat", "([FI)I", reinterpret_cast<void*>(plcFloat)},
     };
     int rc = env->RegisterNatives(c, methods, sizeof(methods)/sizeof(JNINativeMethod));
     if (rc != JNI_OK) return rc;

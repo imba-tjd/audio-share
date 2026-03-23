@@ -8,14 +8,13 @@ import io.ktor.network.sockets.Datagram
 import io.ktor.network.sockets.InetSocketAddress
 import io.ktor.network.sockets.SocketAddress
 import io.ktor.network.sockets.aSocket
-import io.ktor.network.sockets.port
 import io.ktor.utils.io.CancellationException
 import io.ktor.utils.io.core.ByteReadPacket
+import io.ktor.utils.io.core.remaining
 import io.ktor.utils.io.readText
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -23,6 +22,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.readByteArray
+import kotlinx.io.readShortLe
+import kotlinx.io.readUShortLe
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.TreeMap
@@ -32,7 +33,6 @@ import kotlin.concurrent.withLock
 // 数据包实体
 class UdpAudioPacket(
     val seq: Int,
-    val timestamp: Long,
     val payload: ByteArray
 )
 // 需要timestamp的场合：
@@ -43,7 +43,7 @@ class UdpAudioPacket(
 // 抖动缓冲区实现
 class JitterBuffer(
     private val maxDepth: Int = 10,
-    private val minDepth: Int = 2 //  pre-roll or initial buffering
+    private val minDepth: Int = 3 //  pre-roll or initial buffering
 ) {
     private val buffer = TreeMap<Int, UdpAudioPacket>()
     private val lock = ReentrantLock()
@@ -110,8 +110,10 @@ class JitterBuffer(
     }
 }
 
-class NetClient(val onReceiveError: (e: String) -> Unit) {
+class UdpClient(val onReceiveError: (e: String) -> Unit) {
+
     private val scope = CoroutineScope(Dispatchers.IO + CoroutineName("NetClient"))
+
     val jitterBuffer = JitterBuffer()
 
     private var selector: SelectorManager? = null
@@ -178,10 +180,12 @@ class NetClient(val onReceiveError: (e: String) -> Unit) {
     }
 
     private fun startHeartbeatLoop() = scope.launch {
+        val ping = "PIN".encodeToByteArray()
+
         while (isActive) {
             delay(1000)
             try {
-                serverAddr?.let { socket?.send(Datagram(ByteReadPacket("PIN".encodeToByteArray()), it)) }
+                serverAddr?.let { socket?.send(Datagram(ByteReadPacket(ping), it)) }
             } catch (e: Exception) {
                 Log.i("NetClient PIN", "failed")
             }
@@ -195,40 +199,34 @@ class NetClient(val onReceiveError: (e: String) -> Unit) {
         while (isActive) {
             try {
                 val datagram = sock.receive()
-                val rawBytes = datagram.packet.readByteArray()
+                val packet = datagram.packet
+                val availableBytes = packet.remaining
 
-                if (rawBytes.size <= 4) {
-                    handleMeta(rawBytes)
+                if (availableBytes <= 4) {
+                    handleMeta(packet.readByteArray())
                     continue
                 }
 
-                val buf = ByteBuffer.wrap(rawBytes).order(ByteOrder.LITTLE_ENDIAN)
-                buf.short // padding
-                val seq = buf.short.toInt() and 0xFFFF
-                val timestamp = buf.int.toLong() and 0xFFFFFFFFL
+                packet.readShortLe() // meta padding
+                val seq = packet.readUShortLe().toInt() and 0xFFFF
 
-                val payload = ByteArray(rawBytes.size - 8)
-                buf.get(payload)
+                val payload = packet.readByteArray()
 
-                if (OnData != null) {
-                    OnData!!(payload)
-                } else {
-                    jitterBuffer.put(UdpAudioPacket(seq, timestamp, payload))
-                }
+                OnData?.invoke(payload) ?: jitterBuffer.put(UdpAudioPacket(seq, payload))
             }
             catch (e: Exception) {
                 if (e is CancellationException) throw e
 
                 onReceiveError("Receive Error" + e.toString())
-                if (errorCnt++ > 20) {
+                if (errorCnt++ > 10) {
                    throw e
                 }
             }
         }
     }
 
-    private suspend fun handleMeta(buf: ByteArray) {
-        val cmd = buf.toString()
+    private fun handleMeta(buf: ByteArray) {
+        val cmd = String(buf, Charsets.UTF_8)
         when(cmd) {
             "PON" -> ""
         }
