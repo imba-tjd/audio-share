@@ -23,4 +23,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "audio-share-app"
 include(":app")
+include(":lib")
  

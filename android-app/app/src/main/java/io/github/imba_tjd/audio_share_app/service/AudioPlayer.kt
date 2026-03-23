@@ -12,24 +12,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.datastore.preferences.core.floatPreferencesKey
-import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player.Commands
 import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
 import androidx.concurrent.futures.CallbackToFutureAdapter
+import androidx.datastore.core.use
+import ashipo.jopus.OPUS_OK
+import ashipo.jopus.Opus
 import com.google.common.util.concurrent.Futures.immediateVoidFuture
 import com.google.common.util.concurrent.ListenableFuture
 import io.github.imba_tjd.audio_share_app.R
 import io.github.imba_tjd.audio_share_app.model.AudioConfigKeys
-import io.github.imba_tjd.audio_share_app.model.NetworkConfigKeys
+import io.github.imba_tjd.audio_share_app.model.ServerInfo
 import io.github.imba_tjd.audio_share_app.model.audioConfigDataStore
 import io.github.imba_tjd.audio_share_app.model.getFloat
-import io.github.imba_tjd.audio_share_app.model.getInteger
-import io.github.imba_tjd.audio_share_app.model.getResourceUri
-import io.github.imba_tjd.audio_share_app.model.networkConfigDataStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +41,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.nio.FloatBuffer
+import java.time.LocalTime
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration.Companion.seconds
 
@@ -71,6 +71,7 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
         )
         .build()
 
+    // 状态与框架回调。当本代码修改了_state后，要调用invalidateState()，框架就会获取当前状态
     private var _state: State = _initState
     override fun getState(): State = _state
 
@@ -92,10 +93,18 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
         private var _message by mutableStateOf("")
         var message: String
             get() = _message
-            set(v) { _message += "${v}\n" }
+            set(v) {
+                val now = LocalTime.now()
+                _message += "[${now.minute}:${now.second}] ${v}\n"
+            }
     }
 
     override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+        _state = _state.buildUpon()
+            .setPlayWhenReady(playWhenReady, PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+            .build()
+        // 这里不需要调用 invalidateState()，因为当前正处于 Media3 的回调周期内。当本函数完成后，框架会自动获取一次状态
+
         return CallbackToFutureAdapter.getFuture { completer ->
             playJob?.cancel()
             if (playWhenReady) {
@@ -121,14 +130,17 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
     }
 
     private suspend fun startInternal() {
-        _message = context.getString(R.string.label_connecting) + "\n"
+        _message = ""
+
+        val serverInfo = ServerInfo.fromDataStore(context.applicationContext)
 
         while (currentCoroutineContext().isActive) {
             try {
                 updatePlaybackState(STATE_BUFFERING, true)
 
-                // 1. 挂起直到连接成功 (ServerInfo 已被内部解析并由 onMessage 汇报)
-                netClient.connect()
+                // 1. 挂起直到连接成功 ()
+                message = context.getString(R.string.label_connecting)
+                netClient.connect(serverInfo)
 
                 // 2. 更新 UI 为 Ready
                 message = context.getString(R.string.label_started)
@@ -195,27 +207,115 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
 
     // 核心拉取数据的循环协程
     private suspend fun runAudioLoop() = withContext(Dispatchers.IO) {
-        initAudioTrack()
+        initAudioTrack() // Ensure this is set to AudioFormat.ENCODING_PCM_FLOAT
 
-        var silenceBuffer = ByteArray(480 * 2 * 4)
+        fun opus_native() {
+            val opus = Opus()
+            val initResult = opus.initDecoder(48000, 2)
+            if (initResult != OPUS_OK) {
+                println("Opus Init Error: ${opus.getErrorString(initResult)}")
+                return
+            }
 
-        while (isActive) {
-            val payload = netClient.jitterBuffer.pull()
+            val framesPerChannel = 480
+            val channels = 2
+            val pcmBuffer = FloatArray(framesPerChannel * channels)
 
-            if (payload != null) {
-                if (silenceBuffer.size != payload.size) {
-                    silenceBuffer = ByteArray(payload.size)
+            try {
+                while (isActive) {
+                    // Jitter buffer returns payload, or null if a packet was lost/delayed
+                    val payload = netClient.jitterBuffer.pull()
+
+                    val framesDecoded = payload?.let { pl ->
+                        opus.decodeFloat(
+                            payload,              // encodedData (null for PLC)
+                            pl.size,         // encodedBytes (0 for PLC)
+                            pcmBuffer,            // outputBuffer
+                            framesPerChannel,     // outputBufferFrames
+                            1                     // fec (0 unless your payload has in-band FEC)
+                        )
+                    } ?:
+                    opus.plcFloat(pcmBuffer, framesPerChannel)
+
+                    if (framesDecoded > 0) {
+                        val totalSamples = framesDecoded * channels
+
+                        // AudioTrack WRITE_BLOCKING acts as our real-time clock.
+                        // Because Opus PLC always outputs audio even when payload is null,
+                        // this write guarantees the timing loop never spins out of control.
+                        audioTrack.write(pcmBuffer, 0, totalSamples, AudioTrack.WRITE_BLOCKING)
+                    } else if (framesDecoded < 0) {
+                        message = "Opus Decode Error: ${opus.getErrorString(framesDecoded)}"
+                    }
                 }
-                audioTrack.write(payload, 0, payload.size, AudioTrack.WRITE_BLOCKING)
-            } else {
-                audioTrack.write(silenceBuffer, 0, silenceBuffer.size, AudioTrack.WRITE_BLOCKING)
+            } finally {
+                opus.releaseDecoder()
             }
         }
+
+        fun opus_android() {
+            OpusDecoderAndroid().use { opus ->
+                opus.init()
+
+                val outBuffer = FloatArray(480 * 2)
+                val silenceBuffer = ByteArray(480 * 2 * 4)
+
+                while (isActive) {
+                    val payload = netClient.jitterBuffer.pull()
+                    if (payload != null) {
+                        val decoded_num = opus.decode(payload, outBuffer)
+                        audioTrack.write(outBuffer, 0, decoded_num, AudioTrack.WRITE_BLOCKING)
+                    } else {
+                        audioTrack.write(silenceBuffer, 0, silenceBuffer.size, AudioTrack.WRITE_BLOCKING)
+                    }
+                }
+            }
+        }
+
+//        val opus = OpusDecoderAndroid()
+//        opus.init(0)
+//        val outBuffer = FloatArray(480 * 2)
+//
+//        netClient.OnData = { data ->
+//            val decoded_num = opus.decode(data, outBuffer)
+//            audioTrack.write(outBuffer, 0, decoded_num, AudioTrack.WRITE_BLOCKING)
+//        }
+
+        val opus = Opus()
+        val initResult = opus.initDecoder(48000, 2)
+        if (initResult != OPUS_OK) {
+            throw RuntimeException("Opus init fail")
+        }
+
+        val framesPerChannel = 480
+        val channels = 2
+        val outBuffer = FloatArray(framesPerChannel * channels)
+
+        netClient.OnData = { data ->
+//            val num = opus.decodeFloat(
+//                data,              // encodedData (null for PLC)
+//                data.size,         // encodedBytes (0 for PLC)
+//                outBuffer,            // outputBuffer
+//                framesPerChannel,     // outputBufferFrames
+//                1                     // fec (0 unless your payload has in-band FEC)
+//            )
+//            audioTrack.write(outBuffer, 0, num, AudioTrack.WRITE_BLOCKING)
+
+            audioTrack.write(data, 0, data.size, AudioTrack.WRITE_BLOCKING)
+
+        }
+
+        while(isActive) {
+            delay(1000)
+        }
+
+//        opus_android()
+//        opus_native()
     }
 
     // 初始化硬件音频层
     private suspend fun initAudioTrack() {
-        val encoding = AudioFormat.ENCODING_PCM_32BIT
+        val encoding = AudioFormat.ENCODING_PCM_FLOAT
         val channelMask = AudioFormat.CHANNEL_OUT_STEREO
         val sampleRate = 48000
 

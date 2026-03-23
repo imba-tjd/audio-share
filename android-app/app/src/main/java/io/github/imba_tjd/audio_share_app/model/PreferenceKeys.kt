@@ -20,6 +20,8 @@ object NetworkConfigKeys {
     const val PROTO = "proto"
     const val HOST = "host"
     const val PORT = "port"
+    const val USE_OPUS = "use_opus"
+    const val OPUS_SKIP = "opus_skip"
 }
 
 object AudioConfigKeys {

@@ -112,6 +112,8 @@ dependencies {
 //    implementation(libs.kotlinx.coroutines.guava)
     implementation("androidx.concurrent:concurrent-futures-ktx:+")
 
+    implementation(project(":lib"))
+
 //    testImplementation(libs.junit)
 //    testImplementation(platform(libs.androidx.compose.bom))
 //    androidTestImplementation(libs.androidx.junit)
