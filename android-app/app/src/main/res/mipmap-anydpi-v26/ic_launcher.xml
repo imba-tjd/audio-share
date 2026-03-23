@@ -1,6 +1,114 @@
 <?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background"/>
-    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
-    <monochrome android:drawable="@drawable/ic_launcher_foreground"/>
+
+    <!-- 1. 背景层：粉色背景 -->
+    <background>
+        <color android:color="#f3799f" />
+    </background>
+
+    <!-- 2. 前景层：白色的喇叭与传输波浪图标 -->
+    <foreground>
+        <inset
+            android:insetBottom="12dp"
+            android:insetLeft="12dp"
+            android:insetRight="12dp"
+            android:insetTop="12dp">
+
+            <vector
+                android:width="108dp"
+                android:height="108dp"
+                android:viewportHeight="108"
+                android:viewportWidth="108">
+
+                <!-- 使用 group 统一倾斜 35 度，制造向右上角广播的动感 -->
+                <group
+                    android:pivotX="54"
+                    android:pivotY="54"
+                    android:rotation="-35">
+
+                    <!-- A. 底部连接线 (Cable) -->
+                    <path
+                        android:pathData="M 32,62 V 76 A 8,8 0 0 0 40,84 H 65"
+                        android:strokeColor="#FFFFFF"
+                        android:strokeLineCap="round"
+                        android:strokeLineJoin="round"
+                        android:strokeWidth="5" />
+
+                    <!-- B. 喇叭尾部磁体基座 (Speaker Base) -->
+                    <path
+                        android:fillColor="#FFFFFF"
+                        android:pathData="M 30,46 h 5 v 16 h -5 z" />
+
+                    <!-- C. 喇叭扩音锥体 (Speaker Cone) -->
+                    <!-- 使用贝塞尔曲线 (C) 绘制了微凸的前开口，增加美感 -->
+                    <path
+                        android:fillColor="#FFFFFF"
+                        android:pathData="M 37,46 L 54,32 C 59,37 59,71 54,76 L 37,62 Z" />
+
+                    <!-- D. 传输信号波浪线 (Relay Wave) -->
+                    <path
+                        android:pathData="M 52,54 C 57,54 56,66 62,66 C 68,66 65,42 74,42 L 78,42"
+                        android:strokeColor="#FFFFFF"
+                        android:strokeLineCap="round"
+                        android:strokeLineJoin="round"
+                        android:strokeWidth="4" />
+
+                    <!-- E. 信号波浪的箭头 (Arrow Head) -->
+                    <path
+                        android:fillColor="#FFFFFF"
+                        android:pathData="M 76,34 L 88,42 L 76,50 Z" />
+
+                </group>
+            </vector>
+
+        </inset>
+    </foreground>
+
+    <!-- 3. 单色层：适配 Android 13+ 的 Material You 主题应用图标 (Themed Icons) -->
+    <monochrome>
+        <inset
+            android:insetBottom="12dp"
+            android:insetLeft="12dp"
+            android:insetRight="12dp"
+            android:insetTop="12dp">
+
+            <vector
+                android:width="108dp"
+                android:height="108dp"
+                android:viewportHeight="108"
+                android:viewportWidth="108">
+
+                <group
+                    android:pivotX="54"
+                    android:pivotY="54"
+                    android:rotation="-35">
+
+                    <path
+                        android:pathData="M 32,62 V 76 A 8,8 0 0 0 40,84 H 65"
+                        android:strokeColor="#000000"
+                        android:strokeLineCap="round"
+                        android:strokeLineJoin="round"
+                        android:strokeWidth="5" />
+                    <path
+                        android:fillColor="#000000"
+                        android:pathData="M 30,46 h 5 v 16 h -5 z" />
+                    <path
+                        android:fillColor="#000000"
+                        android:pathData="M 37,46 L 54,32 C 59,37 59,71 54,76 L 37,62 Z" />
+                    <path
+                        android:pathData="M 52,54 C 57,54 56,66 62,66 C 68,66 65,42 74,42 L 78,42"
+                        android:strokeColor="#000000"
+                        android:strokeLineCap="round"
+                        android:strokeLineJoin="round"
+                        android:strokeWidth="4" />
+                    <path
+                        android:fillColor="#000000"
+                        android:pathData="M 76,34 L 88,42 L 76,50 Z" />
+
+                </group>
+            </vector>
+
+        </inset>
+    </monochrome>
+
 </adaptive-icon>
