@@ -2,6 +2,8 @@ package io.github.imba_tjd.audio_share_app.ui.screen
 
 import android.widget.RadioGroup
 import androidx.activity.compose.LocalActivity
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,12 +16,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material.icons.outlined.WifiTethering
 import androidx.compose.material3.Checkbox
@@ -43,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -78,7 +83,7 @@ fun HomeScreen(viewModel: HomeScreenViewModel = viewModel()) {
 
 @Composable
 fun HomeScreenStateless(uiState: UiState.Success,
-                        onSave: (proto: String, host: String, port: Int, use_opus: Boolean, opus_skip: Int) -> Unit,
+                        onSave: (proto: String, host: String, port: Int, use_opus: Boolean, use_jb: Boolean) -> Unit,
                         getMediaController: suspend () -> MediaController
                         ) {
     val scope = rememberCoroutineScope()
@@ -87,7 +92,8 @@ fun HomeScreenStateless(uiState: UiState.Success,
     var port by remember(uiState) { mutableStateOf(uiState.port.toString()) }
     var proto by remember(uiState) { mutableStateOf(uiState.proto) }
     var use_opus by remember(uiState) { mutableStateOf(uiState.use_opus) }
-    var opus_skip by remember(uiState) { mutableStateOf(uiState.opus_skip) }
+    var use_jb by remember(uiState) { mutableStateOf(uiState.use_jb) }
+//    var opus_skip by remember(uiState) { mutableStateOf(uiState.opus_skip) }
 
     var started by remember { mutableStateOf(false) }
     val isHostError by remember { derivedStateOf {
@@ -103,14 +109,14 @@ fun HomeScreenStateless(uiState: UiState.Success,
             .padding(16.dp)
             .fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Surface() {
+        Surface(tonalElevation = 4.dp, shape = RoundedCornerShape(8.dp)) {
             Row(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                arrayOf("UDP", "TCP").forEach { p ->
+                arrayOf("UDP", "TCP", "ADB").forEach { p ->
                     Row (verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.clickable(!started) { proto = p }
                         ) {
@@ -119,12 +125,13 @@ fun HomeScreenStateless(uiState: UiState.Success,
                             onClick = { proto = p }
                         )
                         Text(p)
-                        Spacer(Modifier.size(16.dp))
+                        Spacer(Modifier.size(12.dp))
                     }
                 }
             }
         }
 
+        AnimatedVisibility(proto == "UDP") {
         Row(
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -133,17 +140,27 @@ fun HomeScreenStateless(uiState: UiState.Success,
             ) {
                 Checkbox(use_opus, onCheckedChange = {use_opus = it}, enabled = !started)
                 Text("Use Opus")
-                Spacer(Modifier.width(16.dp))
+                Spacer(Modifier.width(8.dp))
             }
 
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(8.dp))
 
-            OutlinedTextField(opus_skip.toString(), onValueChange = {opus_skip = it.toIntOrNull() ?: 0},
-                label = { Text("Opus skip value") },
-                enabled = !started && use_opus
-            )
+            Row(verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable(!started) {use_jb = !use_jb}
+            ) {
+                Checkbox(use_jb, onCheckedChange = {use_jb = it}, enabled = !started)
+                Text("Use Jitter Buffer")
+                Spacer(Modifier.width(8.dp))
+            }
+
+//          OutlinedTextField(opus_skip.toString(), onValueChange = {opus_skip = it.toIntOrNull() ?: 0},
+//              label = { Text("Opus skip value") },
+//              enabled = !started && use_opus
+//          )
+            }
         }
 
+        AnimatedVisibility(proto != "ADB") {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically
@@ -176,6 +193,7 @@ fun HomeScreenStateless(uiState: UiState.Success,
                 singleLine = true
             )
         }
+        }
 
         Row(
             horizontalArrangement = Arrangement.SpaceEvenly,
@@ -184,6 +202,14 @@ fun HomeScreenStateless(uiState: UiState.Success,
         ) {
             val probing_text = stringResource(R.string.probing)
             val found_text = stringResource(R.string.probe_found)
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton({}, Modifier.size(40.dp)) {
+                Icon(Icons.Default.QrCodeScanner, "Scan QR code",
+                    tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.fillMaxSize())
+            }
+
+            Spacer(Modifier.width(16.dp))
 
             IconButton({
                 scope.launch {
@@ -194,19 +220,20 @@ fun HomeScreenStateless(uiState: UiState.Success,
                         host = it.address.hostname
                         port = it.address.port.toString()
                         use_opus = it.useOpus
-                        opus_skip = it.opusSkip
+//                        opus_skip = it.opusSkip
                         AudioPlayer.message = "${found_text} ${it.address.hostname}"
                     }.onFailure {
                         AudioPlayer.message = it.toString()
                     }
                 }
-            }, Modifier.size(48.dp)){
+            }, Modifier.size(48.dp)) {
                 Icon(
                     imageVector = Icons.Default.WifiTethering,
                     contentDescription = "probe",
                     tint = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.fillMaxSize()
                 )
+                }
             }
 
             IconButton(
@@ -219,7 +246,7 @@ fun HomeScreenStateless(uiState: UiState.Success,
                             getMediaController().stop()
                         } else {
                             try {
-                                onSave(proto, host, port.toInt(), use_opus, opus_skip)
+                                onSave(proto, host, port.toInt(), use_opus, use_jb)
                                 getMediaController().play() // 调用PlaybackService，会转发给player，调用playWhenReady(true)
                             } catch (_: NumberFormatException) {
                                 return@launch

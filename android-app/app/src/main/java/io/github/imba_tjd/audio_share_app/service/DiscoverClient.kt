@@ -72,7 +72,7 @@ class DiscoverClient {
             address = InetSocketAddress("0.0.0.0", dataPort),
             proto = proto,
             useOpus = useOpus,
-            opusSkip = opusSkip
+//            opusSkip = opusSkip
         )
     }
 }

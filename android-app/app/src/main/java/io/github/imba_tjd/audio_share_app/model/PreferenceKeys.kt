@@ -21,7 +21,8 @@ object NetworkConfigKeys {
     const val HOST = "host"
     const val PORT = "port"
     const val USE_OPUS = "use_opus"
-    const val OPUS_SKIP = "opus_skip"
+//    const val OPUS_SKIP = "opus_skip"
+    const val USE_JB = "use_jb"
 }
 
 object AudioConfigKeys {

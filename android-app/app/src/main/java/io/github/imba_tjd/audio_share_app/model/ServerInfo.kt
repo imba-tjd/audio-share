@@ -14,7 +14,7 @@ data class ServerInfo(
     val address: InetSocketAddress,
     val proto: String,
     val useOpus: Boolean,
-    val opusSkip: Int
+//    val opusSkip: Int
 ) {
     companion object {
         suspend fun fromDataStore(context: Context): ServerInfo = withContext(Dispatchers.IO) {
@@ -28,7 +28,7 @@ data class ServerInfo(
                 ),
                 proto = conf[stringPreferencesKey(NetworkConfigKeys.PROTO)]!!,
                 useOpus = conf[booleanPreferencesKey(NetworkConfigKeys.USE_OPUS)]!!,
-                opusSkip = conf[intPreferencesKey(NetworkConfigKeys.OPUS_SKIP)]!!
+//                opusSkip = conf[intPreferencesKey(NetworkConfigKeys.OPUS_SKIP)]!!
             )
         }
     }

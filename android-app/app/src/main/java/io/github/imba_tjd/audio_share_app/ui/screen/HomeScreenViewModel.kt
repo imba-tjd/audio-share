@@ -43,7 +43,8 @@ class HomeScreenViewModel(application: Application) : AndroidViewModel(applicati
             val host: String,
             val port: Int,
             val use_opus: Boolean = true,
-            val opus_skip: Int = 0
+//            val opus_skip: Int = 0,
+            val use_jb: Boolean = false,
         ) : UiState
     }
 
@@ -53,7 +54,8 @@ class HomeScreenViewModel(application: Application) : AndroidViewModel(applicati
             host = it[stringPreferencesKey(NetworkConfigKeys.HOST)] ?: application.getString(R.string.default_host),
             port = it[intPreferencesKey(NetworkConfigKeys.PORT)] ?: application.getInteger(R.integer.default_port),
             use_opus = it[booleanPreferencesKey(NetworkConfigKeys.USE_OPUS)] ?: true,
-            opus_skip = it[intPreferencesKey(NetworkConfigKeys.OPUS_SKIP)] ?: 0,
+//            opus_skip = it[intPreferencesKey(NetworkConfigKeys.OPUS_SKIP)] ?: 0,
+            use_jb = it[booleanPreferencesKey(NetworkConfigKeys.USE_JB)] ?: false,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -61,14 +63,15 @@ class HomeScreenViewModel(application: Application) : AndroidViewModel(applicati
         initialValue = UiState.Loading,
     )
 
-    fun saveNetWorkSettings(proto: String, host: String, port: Int, use_opus: Boolean, opus_skip: Int): Job {
+    fun saveNetWorkSettings(proto: String, host: String, port: Int, use_opus: Boolean, use_jb: Boolean): Job {
         return viewModelScope.launch {
             getApplication<Application>().networkConfigDataStore.edit {
                 it[stringPreferencesKey(NetworkConfigKeys.PROTO)] = proto
                 it[stringPreferencesKey(NetworkConfigKeys.HOST)] = host
                 it[intPreferencesKey(NetworkConfigKeys.PORT)] = port
                 it[booleanPreferencesKey(NetworkConfigKeys.USE_OPUS)] = use_opus
-                it[intPreferencesKey(NetworkConfigKeys.OPUS_SKIP)] = opus_skip
+//                it[intPreferencesKey(NetworkConfigKeys.OPUS_SKIP)] = opus_skip
+                it[booleanPreferencesKey(NetworkConfigKeys.USE_JB)] = use_jb
             }
         }
     }

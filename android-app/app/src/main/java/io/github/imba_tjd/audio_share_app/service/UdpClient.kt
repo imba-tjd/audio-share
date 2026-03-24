@@ -57,21 +57,21 @@ class JitterBuffer(
     fun put(packet: UdpAudioPacket) {
         lock.withLock {
             if (!preBuffering && expectedSeq != -1 && isSeqOlder(packet.seq, expectedSeq)) {
-                return // Drop late packets
+                return // 丢弃迟到的包
             }
             buffer[packet.seq] = packet
 
-            // Limit latency depth
+            // 限制最大延迟，如果堆积过多，丢弃最老的包追赶进度
             while (buffer.size > maxDepth) {
                 buffer.pollFirstEntry()
             }
         }
     }
 
-    fun pull(): ByteArray? {
+    fun pull(): PullResult {
         lock.withLock {
             if (preBuffering) {
-                if (buffer.size < minDepth) return null
+                if (buffer.size < minDepth) return PullResult.Underrun
                 preBuffering = false
                 expectedSeq = buffer.firstKey()
             }
@@ -79,23 +79,28 @@ class JitterBuffer(
             // Buffer Underrun (Network lag or disconnect)
             if (buffer.isEmpty()) {
                 preBuffering = true // re-enter buffering phase
-                return null
+                return PullResult.Underrun
             }
 
             // Packet Loss Detection
             val firstKey = buffer.firstKey()
             if (isSeqOlder(expectedSeq, firstKey)) {
                 // expectedSeq is missing!
-                // We increment expectedSeq and return null.
-                // This explicitly triggers exactly one frame of PLC in the decoder.
-                expectedSeq = (expectedSeq + 1) and 0xFFFF
-                return null
+                // 探测下一个包(expectedSeq + 1)是否到达，用于 FEC
+                val nextSeq = (expectedSeq + 1) and 0xFFFF
+                val nextPacket = buffer[nextSeq]
+
+                // 指针向前推进。注意：这里我们仅仅跳过了当前丢失的 expectedSeq。
+                // 如果 nextPacket 存在，下一次调用 pull() 时，它就会走正常的 Normal 流程被返回！
+                expectedSeq = nextSeq
+
+                return PullResult.Lost(nextPacket?.payload)
             }
 
             // 4. Normal Delivery
             val packet = buffer.remove(expectedSeq)
             expectedSeq = (expectedSeq + 1) and 0xFFFF
-            return packet?.payload
+            return PullResult.Normal(packet!!.payload)
         }
     }
 
@@ -111,6 +116,15 @@ class JitterBuffer(
         // handle 16-bit sequence wrap-around
         val diff = (seq.toShort() - expected.toShort()).toShort()
         return diff < 0
+    }
+
+    sealed interface PullResult {
+        // 正常取到了期待的包
+        class Normal(val payload: ByteArray) : PullResult
+        // 期待的包丢了，同时提供下一个包(如果有)以供 FEC 尝试
+        class Lost(val nextPayloadForFec: ByteArray?) : PullResult
+        // 缓冲区见底了（网络卡顿）
+        data object Underrun : PullResult
     }
 }
 

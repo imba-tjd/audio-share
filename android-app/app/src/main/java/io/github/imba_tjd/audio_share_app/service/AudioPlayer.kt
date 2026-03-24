@@ -19,6 +19,7 @@ import androidx.media3.common.Player.Commands
 import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
 import androidx.concurrent.futures.CallbackToFutureAdapter
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import ashipo.jopus.OPUS_OK
 import ashipo.jopus.Opus
@@ -26,9 +27,11 @@ import com.google.common.util.concurrent.Futures.immediateVoidFuture
 import com.google.common.util.concurrent.ListenableFuture
 import io.github.imba_tjd.audio_share_app.R
 import io.github.imba_tjd.audio_share_app.model.AudioConfigKeys
+import io.github.imba_tjd.audio_share_app.model.NetworkConfigKeys
 import io.github.imba_tjd.audio_share_app.model.ServerInfo
 import io.github.imba_tjd.audio_share_app.model.audioConfigDataStore
 import io.github.imba_tjd.audio_share_app.model.getFloat
+import io.github.imba_tjd.audio_share_app.model.networkConfigDataStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -148,7 +151,10 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
                 message = context.getString(R.string.label_started)
                 updatePlaybackState(STATE_READY, true)
 
-                // 3. 阻塞式执行拉取与播放，直到异常或主动取消
+                // 3. 初始化AT
+                initAudioTrack()
+
+                // 4. 阻塞式执行拉取与播放，直到异常或主动取消
                 runAudioLoop()
 
             } catch (e: CancellationException) {
@@ -270,9 +276,12 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
 
     // 核心拉取数据的循环协程
     private suspend fun runAudioLoop() = withContext(Dispatchers.IO) {
-        initAudioTrack() // Ensure this is set to AudioFormat.ENCODING_PCM_FLOAT
+        val use_jb = context.networkConfigDataStore.data.first()[booleanPreferencesKey(NetworkConfigKeys.USE_JB)] ?: false
 
-        UdpOpusCb()
+        if (!use_jb)
+            UdpOpusCb()
+        else
+            UdpOpusJb()
     }
 
     private suspend fun UdpPcmCb() {
@@ -366,33 +375,47 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
 
         val framesPerChannel = 480
         val channels = 2
-        val pcmBuffer = FloatArray(framesPerChannel * channels)
+        val outBuffer = FloatArray(framesPerChannel * channels)
 
         try {
             while (scope.isActive) {
-                // Jitter buffer returns payload, or null if a packet was lost/delayed
-                val payload = udpClient.jitterBuffer.pull()
+                when (val result = udpClient.jitterBuffer.pull()) {
+                    is JitterBuffer.PullResult.Normal -> {
+                        // 1. 正常解码当前包
+                        val decodedFrames = opus.decodeFloat(
+                            result.payload, result.payload.size, outBuffer, 480, 0
+                        )
+                        if (decodedFrames > 0) {
+                            audioTrack.write(outBuffer, 0, decodedFrames * 2, AudioTrack.WRITE_BLOCKING)
+                        }
+                    }
 
-                val framesDecoded = payload?.let { pl ->
-                    opus.decodeFloat(
-                        payload,              // encodedData (null for PLC)
-                        pl.size,         // encodedBytes (0 for PLC)
-                        pcmBuffer,            // outputBuffer
-                        framesPerChannel,     // outputBufferFrames
-                        0                     // fec (0 unless your payload has in-band FEC)
-                    )
-                } ?:
-                opus.plcFloat(pcmBuffer, framesPerChannel)
+                    is JitterBuffer.PullResult.Lost -> {
+                        if (result.nextPayloadForFec != null) {
+                            // 2. 尝试用 N+1 包中的 FEC 数据来恢复丢失的 N 包
+                            // 注意：这里的 fec 参数传 1
+                            val decodedFrames = opus.decodeFloat(
+                                result.nextPayloadForFec, result.nextPayloadForFec.size, outBuffer, framesPerChannel, 1
+                            )
+                            if (decodedFrames > 0) {
+                                audioTrack.write(outBuffer, 0, decodedFrames * 2, AudioTrack.WRITE_BLOCKING)
+                            } else {
+                                // FEC 解码失败（可能因为当时没开启FEC），退化为 PLC
+                                val plcFrames = opus.plcFloat(outBuffer, framesPerChannel)
+                                audioTrack.write(outBuffer, 0, plcFrames * 2, AudioTrack.WRITE_BLOCKING)
+                            }
+                        } else {
+                            // 3. 下一个包也没来，神仙难救，直接 PLC 脑补
+                            val plcFrames = opus.plcFloat(outBuffer, framesPerChannel)
+                            audioTrack.write(outBuffer, 0, plcFrames * 2, AudioTrack.WRITE_BLOCKING)
+                        }
+                    }
 
-                if (framesDecoded > 0) {
-                    val totalSamples = framesDecoded * channels
-
-                    // AudioTrack WRITE_BLOCKING acts as our real-time clock.
-                    // Because Opus PLC always outputs audio even when payload is null,
-                    // this write guarantees the timing loop never spins out of control.
-                    audioTrack.write(pcmBuffer, 0, totalSamples, AudioTrack.WRITE_BLOCKING)
-                } else if (framesDecoded < 0) {
-                    message = "Opus Decode Error: ${opus.getErrorString(framesDecoded)}"
+                    is JitterBuffer.PullResult.Underrun -> {
+                        // 4. 网络严重卡顿，没数据了，用 PLC 填充防止爆音，直到预缓冲重新完成
+                        val plcFrames = opus.plcFloat(outBuffer, framesPerChannel)
+                        audioTrack.write(outBuffer, 0, plcFrames * 2, AudioTrack.WRITE_BLOCKING)
+                    }
                 }
             }
         } finally {
