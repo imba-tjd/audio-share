@@ -27,6 +27,7 @@ import com.google.common.util.concurrent.Futures.immediateVoidFuture
 import com.google.common.util.concurrent.ListenableFuture
 import io.github.imba_tjd.audio_share_app.R
 import io.github.imba_tjd.audio_share_app.model.AudioConfigKeys
+import io.github.imba_tjd.audio_share_app.model.AudioDispatcher
 import io.github.imba_tjd.audio_share_app.model.NetworkConfigKeys
 import io.github.imba_tjd.audio_share_app.model.ServerInfo
 import io.github.imba_tjd.audio_share_app.model.audioConfigDataStore
@@ -34,7 +35,6 @@ import io.github.imba_tjd.audio_share_app.model.getFloat
 import io.github.imba_tjd.audio_share_app.model.networkConfigDataStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.NonCancellable
@@ -79,9 +79,7 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
     private var _state: State = _initState
     override fun getState(): State = _state
 
-    private val udpClient = UdpClient { msg ->
-        message = msg
-    }
+    private var netClient: NetClient? = null
 
     private var _audioTrack: AudioTrack? = null
     private val audioTrack get() = _audioTrack!!
@@ -137,25 +135,28 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
     private suspend fun startInternal() {
         _message = ""
 
-        val serverInfo = ServerInfo.fromDataStore(context.applicationContext)
-
         while (currentCoroutineContext().isActive) {
             try {
                 updatePlaybackState(STATE_BUFFERING, true)
 
-                // 1. 挂起直到连接成功 ()
-                message = context.getString(R.string.label_connecting)
-                udpClient.connect(serverInfo)
-
-                // 2. 更新 UI 为 Ready
-                message = context.getString(R.string.label_started)
-                updatePlaybackState(STATE_READY, true)
-
-                // 3. 初始化AT
+                // 1. 先初始化AT，而非先进行连接，减小服务端开始发送到客户端开始消费之间的延迟
                 initAudioTrack()
 
-                // 4. 阻塞式执行拉取与播放，直到异常或主动取消
-                runAudioLoop()
+                // 2. 提前读取Loop所需数据
+                val serverInfo = ServerInfo.fromDataStore(context.applicationContext)
+
+                // 3. 挂起直到连接成功 ()
+                message = context.getString(R.string.label_connecting)
+                netClient = setupConnection()
+
+                // 4. 更新 UI 为 Ready
+                scope.launch {
+                    message = context.getString(R.string.label_started)
+                    updatePlaybackState(STATE_READY, true)
+                }
+
+                // 5. 阻塞式执行拉取与播放，直到异常或主动取消
+                runAudioLoop(serverInfo)
 
             } catch (e: CancellationException) {
                 throw e // 让外层 playJob 正确取消
@@ -204,7 +205,7 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
 
     // 统筹释放资源（NetClient 的 stop 包含挂起等待 END 的逻辑）
     private suspend fun stopAllInternal() {
-        udpClient.stop()
+        netClient?.stop()
         _loudnessEnhancer?.release()
         _loudnessEnhancer = null
         _equalizer?.release()
@@ -275,23 +276,30 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
     }
 
     // 核心拉取数据的循环协程
-    private suspend fun runAudioLoop() = withContext(Dispatchers.IO) {
-        val use_jb = context.networkConfigDataStore.data.first()[booleanPreferencesKey(NetworkConfigKeys.USE_JB)] ?: false
-
-        if (!use_jb)
-            UdpOpusCb()
-        else
-            UdpOpusJb()
+    private suspend fun runAudioLoop(info: ServerInfo) = withContext(AudioDispatcher) {
+        when(info.proto) {
+            "UDP" -> {
+                val client = netClient as UdpClient
+                val use_jb = context.networkConfigDataStore.data.first()[booleanPreferencesKey(NetworkConfigKeys.USE_JB)] ?: false
+                if (use_jb)
+                    UdpOpusJb(client)
+                else
+                    UdpOpusCb(client)
+            }
+            "ADB" -> AdbLoop(netClient as AdbClient)
+            "TCP" -> TcpLoop(netClient as TcpClient)
+            else -> throw RuntimeException("Unknown proto")
+        }
     }
 
-    private suspend fun UdpPcmCb() {
-        udpClient.OnData = { data ->
+    private suspend fun UdpPcmCb(client: UdpClient) {
+        client.onData = { data ->
             val floatdata = FloatArray(data.size / 4)
             ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(floatdata)
             audioTrack.write(floatdata, 0, floatdata.size, WRITE_BLOCKING)
         }
 
-        while(scope.isActive) {
+        while(currentCoroutineContext().isActive) {
             delay(1000)
         }
     }
@@ -304,12 +312,12 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
 
         client.start()
 
-        while(scope.isActive) {
+        while(currentCoroutineContext().isActive) {
             delay(1000)
         }
     }
 
-    suspend fun mockFileOpusCb() {
+    private suspend fun mockFileOpusCb() {
         val client = MockFileClient(context) { message = it }
 
         val opus = Opus()
@@ -333,12 +341,12 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
 
         client.startOpus()
 
-        while(scope.isActive) {
+        while(currentCoroutineContext().isActive) {
             delay(1000)
         }
     }
 
-    suspend fun UdpOpusCb() {
+    private suspend fun UdpOpusCb(client: UdpClient) {
         val opus = Opus()
         val initResult = opus.initDecoder(48000, 2)
         if (initResult != OPUS_OK) {
@@ -349,7 +357,7 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
         val channels = 2
         val outBuffer = FloatArray(framesPerChannel * channels)
 
-        udpClient.OnData = { data ->
+        client.onData = { data ->
             opus.decodeFloat(
                 data,
                 data.size,
@@ -360,12 +368,12 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
             audioTrack.write(outBuffer, 0, outBuffer.size, WRITE_BLOCKING)
         }
 
-        while(scope.isActive) {
+        while(currentCoroutineContext().isActive) {
             delay(1000)
         }
     }
 
-    private suspend fun UdpOpusJb() {
+    private fun UdpOpusJb(client: UdpClient) {
         val opus = Opus()
         val initResult = opus.initDecoder(48000, 2)
         if (initResult != OPUS_OK) {
@@ -378,15 +386,15 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
         val outBuffer = FloatArray(framesPerChannel * channels)
 
         try {
-            while (scope.isActive) {
-                when (val result = udpClient.jitterBuffer.pull()) {
+            while (playJob!!.isActive) {
+                when (val result = client.jitterBuffer.pull()) {
                     is JitterBuffer.PullResult.Normal -> {
                         // 1. 正常解码当前包
                         val decodedFrames = opus.decodeFloat(
                             result.payload, result.payload.size, outBuffer, 480, 0
                         )
                         if (decodedFrames > 0) {
-                            audioTrack.write(outBuffer, 0, decodedFrames * 2, AudioTrack.WRITE_BLOCKING)
+                            audioTrack.write(outBuffer, 0, decodedFrames * 2, WRITE_BLOCKING)
                         }
                     }
 
@@ -398,23 +406,23 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
                                 result.nextPayloadForFec, result.nextPayloadForFec.size, outBuffer, framesPerChannel, 1
                             )
                             if (decodedFrames > 0) {
-                                audioTrack.write(outBuffer, 0, decodedFrames * 2, AudioTrack.WRITE_BLOCKING)
+                                audioTrack.write(outBuffer, 0, decodedFrames * 2, WRITE_BLOCKING)
                             } else {
                                 // FEC 解码失败（可能因为当时没开启FEC），退化为 PLC
                                 val plcFrames = opus.plcFloat(outBuffer, framesPerChannel)
-                                audioTrack.write(outBuffer, 0, plcFrames * 2, AudioTrack.WRITE_BLOCKING)
+                                audioTrack.write(outBuffer, 0, plcFrames * 2, WRITE_BLOCKING)
                             }
                         } else {
                             // 3. 下一个包也没来，神仙难救，直接 PLC 脑补
                             val plcFrames = opus.plcFloat(outBuffer, framesPerChannel)
-                            audioTrack.write(outBuffer, 0, plcFrames * 2, AudioTrack.WRITE_BLOCKING)
+                            audioTrack.write(outBuffer, 0, plcFrames * 2, WRITE_BLOCKING)
                         }
                     }
 
                     is JitterBuffer.PullResult.Underrun -> {
                         // 4. 网络严重卡顿，没数据了，用 PLC 填充防止爆音，直到预缓冲重新完成
                         val plcFrames = opus.plcFloat(outBuffer, framesPerChannel)
-                        audioTrack.write(outBuffer, 0, plcFrames * 2, AudioTrack.WRITE_BLOCKING)
+                        audioTrack.write(outBuffer, 0, plcFrames * 2, WRITE_BLOCKING)
                     }
                 }
             }
@@ -423,4 +431,37 @@ class AudioPlayer(val context: Context) : SimpleBasePlayer(Looper.getMainLooper(
         }
     }
 
+    private suspend fun AdbLoop(client: AdbClient) {
+        client.predrain()
+        while(currentCoroutineContext().isActive) {
+            val data = client.read()
+            audioTrack.write(data, client.bufByteSize, WRITE_BLOCKING)
+        }
+    }
+
+    private suspend fun TcpLoop(client: TcpClient) {
+        client.onData = { data ->
+            audioTrack.write(data, 1920, WRITE_BLOCKING)
+        }
+        client.predrain()
+        client.startDataLoop()
+
+        while(currentCoroutineContext().isActive) {
+            delay(1000)
+        }
+    }
+
+    private suspend fun setupConnection(): NetClient {
+        val serverInfo = ServerInfo.fromDataStore(context.applicationContext)
+
+        val client = when(serverInfo.proto) {
+            "ADB" -> AdbClient().apply { connect() }
+            "UDP" -> UdpClient().apply { connect(serverInfo) }
+            "TCP" -> TcpClient().apply { connect(serverInfo.address) }
+            else -> throw RuntimeException("Unknown proto")
+        }
+        client.onError = { message = it }
+
+        return client
+    }
 }

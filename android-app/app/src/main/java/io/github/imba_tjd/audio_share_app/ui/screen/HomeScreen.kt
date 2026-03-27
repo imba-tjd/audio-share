@@ -122,7 +122,8 @@ fun HomeScreenStateless(uiState: UiState.Success,
                         ) {
                         RadioButton(
                             selected = proto == p,
-                            onClick = { proto = p }
+                            onClick = { proto = p },
+                            enabled = !started
                         )
                         Text(p)
                         Spacer(Modifier.size(12.dp))
@@ -204,7 +205,7 @@ fun HomeScreenStateless(uiState: UiState.Success,
             val found_text = stringResource(R.string.probe_found)
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton({}, Modifier.size(40.dp)) {
+            IconButton({}, Modifier.size(40.dp), enabled = !started) {
                 Icon(Icons.Default.QrCodeScanner, "Scan QR code",
                     tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.fillMaxSize())
             }
@@ -226,7 +227,8 @@ fun HomeScreenStateless(uiState: UiState.Success,
                         AudioPlayer.message = it.toString()
                     }
                 }
-            }, Modifier.size(48.dp)) {
+            }, Modifier.size(48.dp), enabled = !started)
+            {
                 Icon(
                     imageVector = Icons.Default.WifiTethering,
                     contentDescription = "probe",

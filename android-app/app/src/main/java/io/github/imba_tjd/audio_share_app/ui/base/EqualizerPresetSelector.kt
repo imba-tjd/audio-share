@@ -23,6 +23,20 @@ import io.github.imba_tjd.audio_share_app.model.audioConfigDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import java.util.Locale
+
+val zhLabels = mapOf(
+    "Normal" to "标准",
+    "Classical" to "古典",
+    "Dance" to "舞曲",
+    "Flat" to "平直",
+    "Folk" to "民谣",
+    "Heavy Metal" to "重金属",
+    "Hip Hop" to "嘻哈",
+    "Jazz" to "爵士",
+    "Pop" to "流行",
+    "Rock" to "摇滚"
+)
 
 fun getAvailableEq(): List<String> {
     try{
@@ -38,6 +52,12 @@ fun getAvailableEq(): List<String> {
 
         equalizer.release()
         _audioTrack.release()
+
+        if (Locale.getDefault().language.startsWith("zh")) {
+            return l.map {
+                zhLabels[it] ?: it
+            }
+        }
 
         return l
     } catch (e: Exception) {
@@ -84,7 +104,7 @@ fun EqualizerPresetSelectorStateLess(
         )
 
         FlowRow(
-            modifier = Modifier.fillMaxWidth().padding(16.dp, 0.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         ) {
             presetNames.forEachIndexed { index, name ->
@@ -92,8 +112,10 @@ fun EqualizerPresetSelectorStateLess(
                 FilterChip(
                     selected = isSelected,
                     onClick = { onPresetSelected(index) },
-                    label = {
+                    leadingIcon = {
                         if (isSelected) Icon(Icons.Default.Check, "")
+                    },
+                    label = {
                         Text(name)
                     },
                 )

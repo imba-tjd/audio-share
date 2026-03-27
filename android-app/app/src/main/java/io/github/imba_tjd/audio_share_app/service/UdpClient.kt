@@ -25,13 +25,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.readByteArray
 import kotlinx.io.readShortLe
 import kotlinx.io.readUShortLe
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.util.TreeMap
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.atomics.AtomicLong
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.concurrent.atomics.update
 import kotlin.concurrent.withLock
 
 // 数据包实体
@@ -128,9 +125,9 @@ class JitterBuffer(
     }
 }
 
-class UdpClient(val onReceiveError: (e: String) -> Unit) {
+class UdpClient: NetClient {
 
-    private val scope = CoroutineScope(Dispatchers.IO + CoroutineName("NetClient"))
+    private val scope = CoroutineScope(Dispatchers.IO + CoroutineName("UdpClient"))
 
     val jitterBuffer = JitterBuffer()
 
@@ -138,7 +135,8 @@ class UdpClient(val onReceiveError: (e: String) -> Unit) {
     private var socket: BoundDatagramSocket? = null
     private var serverAddr: SocketAddress? = null
 
-    var OnData: ((data: ByteArray) -> Unit)? = null
+    var onData: ((data: ByteArray) -> Unit)? = null
+    override var onError: ((String) -> Unit)? = null
 
     @OptIn(ExperimentalAtomicApi::class)
     private var lastPongTime = AtomicLong(0)
@@ -157,7 +155,7 @@ class UdpClient(val onReceiveError: (e: String) -> Unit) {
         }
     }
 
-    suspend fun stop() {
+    override suspend fun stop() {
         scope.coroutineContext.cancelChildren()
 
         try {
@@ -217,7 +215,7 @@ class UdpClient(val onReceiveError: (e: String) -> Unit) {
             val last = lastPongTime.load()
             val dura = last - now
             if (last != 0L && dura > timeoutMs) {
-                onReceiveError("Didn't receive PONG from server for ${dura/1000}s.")
+                onError?.invoke("Didn't receive PONG from server for ${dura/1000}s.")
             }
         }
     }
@@ -242,12 +240,12 @@ class UdpClient(val onReceiveError: (e: String) -> Unit) {
 
                 val payload = packet.readByteArray()
 
-                OnData?.invoke(payload) ?: jitterBuffer.put(UdpAudioPacket(seq, payload))
+                onData?.invoke(payload) ?: jitterBuffer.put(UdpAudioPacket(seq, payload))
             }
             catch (e: Exception) {
                 if (e is CancellationException) throw e
 
-                onReceiveError("Receive Error" + e.toString())
+                onError?.invoke("Receive Error" + e.toString())
                 if (errorCnt++ > 10) {
                    throw e
                 }

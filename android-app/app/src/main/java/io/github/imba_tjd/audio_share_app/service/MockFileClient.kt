@@ -109,6 +109,4 @@ class MockFileClient(
         job?.cancel()
         job = null
     }
-
-
 }
