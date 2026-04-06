@@ -52,14 +52,14 @@ fun AudioScreen() {
                 valueRange = AudioTrack.getMinVolume()..AudioTrack.getMaxVolume(),
                 step = 0.02f,
             )
-            SliderConfig(
-                key = AudioConfigKeys.BUFFER_SCALE,
-                title = stringResource(R.string.label_buffer_scale),
-                valueFormatter = { "%1.0fx".format(it) },
-                defaultValue = context.getFloat(R.string.default_buffer_scale),
-                valueRange = 1f..10f,
-                step = 1f
-            )
+//            SliderConfig(
+//                key = AudioConfigKeys.BUFFER_SCALE,
+//                title = stringResource(R.string.label_buffer_scale),
+//                valueFormatter = { "%1.0fx".format(it) },
+//                defaultValue = context.getFloat(R.string.default_buffer_scale),
+//                valueRange = 1f..10f,
+//                step = 1f
+//            )
         }
         ConfigGroup(stringResource(R.string.label_audio_effect)) {
             SliderConfig(

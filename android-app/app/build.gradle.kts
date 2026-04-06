@@ -34,8 +34,8 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1"
-        base.archivesName = "${rootProject.name}-$versionName"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+//        base.archivesName = "${rootProject.name}-$versionName"
+//        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
 //    signingConfigs {
