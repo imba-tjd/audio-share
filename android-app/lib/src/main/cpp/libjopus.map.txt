@@ -1,6 +1,7 @@
 LIBJOPUS {
   global:
-    JNI_OnLoad;
+    #JNI_OnLoad;
+    Java_ashipo_jopus_Opus_*;
   local:
     *;
 };

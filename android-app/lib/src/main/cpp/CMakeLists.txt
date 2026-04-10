@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.18.1)
 project(jopus)
 
+set(OPUS_STACK_PROTECTOR OFF CACHE BOOL "Disable stack protector" FORCE)
 add_subdirectory(opus)
 
 add_library(${CMAKE_PROJECT_NAME}

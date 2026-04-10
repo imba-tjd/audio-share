@@ -5,7 +5,7 @@ plugins {
 android {
     namespace = "ashipo.jopus"
 
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
 
@@ -24,7 +24,7 @@ android {
 
             externalNativeBuild {
                 cmake {
-//                    cppFlags += "-flto"
+                    cppFlags += "-flto"
                 }
             }
 
