@@ -27,7 +27,6 @@ import android.service.quicksettings.TileService
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
-import androidx.core.os.bundleOf
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
@@ -132,7 +131,7 @@ class QsTileService : TileService() {
             val sessionToken =
                 SessionToken(this@QsTileService, ComponentName(this@QsTileService, PlaybackService::class.java))
             val mediaController = MediaController.Builder(this@QsTileService, sessionToken)
-                .setConnectionHints(bundleOf("src" to "QsTileService"))
+                .setConnectionHints(Bundle().apply{putString("src", "QsTileService")})
                 .setListener(object : MediaController.Listener {
                     override fun onDisconnected(controller: MediaController) {
                         super.onDisconnected(controller)

@@ -64,7 +64,7 @@ fun Context.canStartForegroundService(): Boolean {
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S_V2) {
         val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        if (activityManager.appTasks.find { it.taskInfo.isVisible } != null) {
+        if (activityManager.appTasks.find { it.taskInfo?.isVisible ?: false } != null) {
             return true
         }
     }

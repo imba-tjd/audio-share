@@ -26,7 +26,7 @@ plugins {
 
 android {
     namespace = "io.github.imba_tjd.audio_share_app"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "io.github.imba_tjd.audio_share_app"
@@ -56,6 +56,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("debug")
 //            signingConfig = signingConfigs["release"]
         }
     }
